@@ -1,0 +1,778 @@
+---
+title: "Criminal Justice"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+
+# All required libraries
+require(tidyr)      ##  Data wrangling - https://rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf
+
+require(car)        ## Applied Regression - https://www.rdocumentation.org/packages/car/versions/3.0-9
+
+require(data.table) ## Work with tabular data - https://www.machinelearningplus.com/data-manipulation/datatable-in-r-complete-guide/
+
+require(ggplot2)    ## declaratively creating graphics - https://ggplot2.tidyverse.org/
+
+require(gganimate)  ## animation of plots - https://gganimate.com/articles/gganimate.html
+
+require(forcats)    ## solve common problems with factors - https://forcats.tidyverse.org/
+
+require(reshape)    ## Reshape data prior to analysis - https://www.statmethods.net/management/reshape.html
+
+require(magick)     ## Modernize and simplify high-quality image processing - https://cran.r-project.org/web/packages/magick/vignettes/intro.html
+
+require(glmnet)     ## Fit a generalized linear model - https://www.rdocumentation.org/packages/glmnet/versions/4.0-2/topics/glmnet
+
+require(caret)      ## Classification and Regressiion trainging - http://topepo.github.io/caret/index.html
+
+require(psych)      ## Functions for multivariate analysis and scale construction -  https://www.rdocumentation.org/packages/psych/versions/2.0.8
+
+require(jtools)     ## Series of fuctions to automate tedious research tasks - https://jtools.jacob-long.com/  
+
+require(usmap)
+ 
+
+```
+
+
+```{r}
+
+# Load all necessary Data sets
+
+
+# Data for latitude and longitude for all states
+lonlatData = read.csv('C:/Bandhin/Git/Criminal-Justice/Data/statelatlon.csv')  
+
+# Rename Columns
+colnames(lonlatData) = c("code",   "lat", "lon","state")
+
+```
+
+```{r}
+# Data for Region and Division of states
+stateRegion = read.csv('C:/Bandhin/Git/Criminal-Justice/Data/USStates.csv')     
+
+usStates = merge(lonlatData, stateRegion, by = 'state')
+
+usStates = rbind(usStates, c('United States', 'US', 37.0902, 95.7129, 'Whole', 'Whole'))
+```
+
+```{r}
+# Crime Data
+crimeData = read.csv('C:/Bandhin/Git/Criminal-Justice/Data/CrimeStatebyState2.csv')  
+
+# Rename Columns
+
+colnames(crimeData) = c("Year", "Population", "ViolentCrimeTotal", "MurderCrime", "RapeCrime", "RobberyCrime",
+                        "AggravatedAssaultCrime", "PropertyCrimeTotal", "BurglaryCrime", "LarcenyTheftCrime",
+                        "MotorVehicleTheftCrime", "ViolentCrimeRate", "MurderCrimeRate", "RapeCrimeRate",
+                        "RobberyCrimeRate", "AggravatedAssaultCrimeRate", "PropertyCrimeRate", "BurglaryCrimeRate", "LarcenyTheftCrimeRate", "MotorVehicleTheftCrimeRate", "state")
+
+
+crimeData['TotalCrime'] = crimeData['ViolentCrimeTotal'] + crimeData['PropertyCrimeTotal']
+crimeData['TotalCrimeRate'] = crimeData['ViolentCrimeRate'] + crimeData['PropertyCrimeRate']
+
+
+
+# Merge Longitude Data with Crime Data
+
+crimeDataLatLon = merge(crimeData, usStates, by = c('state'))
+head(crimeDataLatLon)
+
+```
+
+```{r}
+# Budget data for states
+budgetData = read.csv('C:/Bandhin/Git/Criminal-Justice/Data/GBudget5.csv')      
+
+# Convert Data to numeric
+cols = names(budgetData)[3:12]
+budgetData[cols] = lapply(budgetData[cols], as.numeric)
+
+# Rename column names
+
+colnames(budgetData) = c("state", "Year", "Revenue", "Expenditure", "CorrectionalExpense",
+                         "EducationExpense", "HealthExpense", "HospitalExpense",
+                         "HousingExpense", "PoliceExpense", "PublicWelfareExpense", "UnemploymentExpense")
+
+
+
+# Calculate Total Police and Correctional expenses
+
+budgetData['CorrectionPoliceExpense'] = budgetData['CorrectionalExpense'] + budgetData['PoliceExpense']
+
+head(budgetData)
+```
+
+```{r}
+
+#  Prepare the data for analaysis
+
+totalData = merge(budgetData, crimeDataLatLon, by=c('state','Year'))
+head(totalData)
+
+
+keep_cols = c("state", "lat", "lon", "Region", "Division", "Year", "Population", "CorrectionalExpense", "EducationExpense", "HealthExpense", "HospitalExpense", "HousingExpense", "PoliceExpense", "PublicWelfareExpense", "UnemploymentExpense", 'CorrectionPoliceExpense',"ViolentCrimeTotal", "MurderCrime", "RapeCrime", "RobberyCrime", "AggravatedAssaultCrime", "PropertyCrimeTotal", "BurglaryCrime", "LarcenyTheftCrime", "MotorVehicleTheftCrime", 'TotalCrime', "ViolentCrimeRate", "MurderCrimeRate", "RapeCrimeRate", "RobberyCrimeRate", "AggravatedAssaultCrimeRate", "PropertyCrimeRate", "BurglaryCrimeRate", "LarcenyTheftCrimeRate", "MotorVehicleTheftCrimeRate", 'TotalCrimeRate')
+
+plotData = totalData[keep_cols]
+
+# Calcualte expanse rate per 100000
+for(i in 8:16){
+  colname = paste(names(plotData)[i],"Rate",sep="")
+  plotData[colname] = round((100000 * plotData[i])/plotData$Population, digit=2)
+}
+
+
+```
+
+
+```{r}
+meanCrime = subset(plotData, Year > 1999)
+meancr = mean(meanCrime$TotalCrimeRate[meanCrime$state == 'United States'])
+meanexp = mean(meanCrime$CorrectionPoliceExpenseRate[meanCrime$state == 'United States'])
+print(paste("The Mean Crime Rate in US is " , meancr))
+print(paste("The Mean Expanse Rate in US is " , meanexp))
+      
+#paste(meancr, meanexp))
+```
+
+
+
+
+
+```{r}
+## FETCH UNIQUE LIST OF YEARS AND STATES
+
+year_list = unique(plotData$Year)
+state_list = unique(plotData$state)
+
+
+```
+
+```{r}
+## EXRACT THE TOTAL CRIME AT THE BEGINNING AND END PERIOD OF COLLECTION AND CALCULATE TOTAL CRIME INCREMENT FOR EACH STATE
+
+
+stateRates = setNames(data.frame(matrix(ncol=8, nrow=1)), c("state","Year", "TotalCrimeRate_Inc", "ViolentCrimeRate_Inc", "PropCrimeRate_Inc", "TotalExpenseRate_Inc", "PoliceExpenseRate_Inc", "CorrectionExpenseRate_Inc"))
+
+
+
+for( i in 2:length(year_list)){
+    j = i-1
+    x = year_list[i]
+    y = year_list[j]
+    
+    for( z in 1:length(state_list)){
+      
+      begTotalcrime = plotData$TotalCrimeRate[plotData$state == state_list[z] & plotData$Year == x]
+      endTotalcrime = plotData$TotalCrimeRate[plotData$state == state_list[z] & plotData$Year == y]
+      totalcrimeIncrement = round(((endTotalcrime - begTotalcrime) / begTotalcrime) * 100, digit=2)
+  
+      begViolentcrime = plotData$ViolentCrimeRate[plotData$state == state_list[z] & plotData$Year == x]
+      endViolentcrime = plotData$ViolentCrimeRate[plotData$state == state_list[z] & plotData$Year == y]
+      violentcrimeIncrement = round(((endViolentcrime - begViolentcrime) / begViolentcrime) * 100, digit=2)
+      
+      begPropcrime = plotData$PropertyCrimeRate[plotData$state == state_list[z] & plotData$Year == x]
+      endPropcrime = plotData$PropertyCrimeRate[plotData$state == state_list[z] & plotData$Year == y]
+      propcrimeIncrement = round(((endPropcrime - begPropcrime) / begPropcrime) * 100, digit=2)
+      
+      begTotalExp = plotData$CorrectionPoliceExpenseRate[plotData$state == state_list[z] & plotData$Year == x]
+      endTotalExp = plotData$CorrectionPoliceExpenseRate[plotData$state == state_list[z] & plotData$Year == y]
+      totalexpIncrement = round(((endTotalExp - begTotalExp) / begTotalExp) * 100, digit=2)
+      
+      begPoliceExp = plotData$PoliceExpenseRate[plotData$state == state_list[z] & plotData$Year == x]
+      endPoliceExp = plotData$PoliceExpenseRate[plotData$state == state_list[z] & plotData$Year == y]
+      policeexpIncrement = round(((endPoliceExp - begPoliceExp) / begPoliceExp) * 100, digit=2)
+      
+      begCorrectionalExp = plotData$CorrectionalExpenseRate[plotData$state == state_list[z] & plotData$Year == x]
+      endCorrectionalExp = plotData$CorrectionalExpenseRate[plotData$state == state_list[z] & plotData$Year == y]
+      correctionalexpIncrement = round(((endCorrectionalExp - begCorrectionalExp) / begCorrectionalExp) * 100, digit=2)
+
+
+      results =c(state_list[z],year_list[i],totalcrimeIncrement, violentcrimeIncrement,propcrimeIncrement, totalexpIncrement, policeexpIncrement,correctionalexpIncrement)
+
+      stateRates = rbind(stateRates, results)
+    }
+}
+
+
+```
+
+```{r}
+
+# GET THE FILE DIRECRTORY TO STORE GRAPHS AND DATA CREATED
+
+the_path <- getwd()
+ifelse(!dir.exists(file.path(the_path, "graphs")), dir.create(file.path(the_path, "graphs")), FALSE)
+ifelse(!dir.exists(file.path(the_path, "data")), dir.create(file.path(the_path, "data")), FALSE)
+```
+
+
+```{r}
+
+attach(stateRates)
+
+stateOrderRates = stateRates[order(Year),]
+
+
+usRates = subset(stateOrderRates, state == 'United States')
+write.csv(usRates, 'data/usRates.csv')
+
+detach(stateRates)
+
+
+```
+
+
+
+```{r}
+### PLOT BY REGION THE POLICE EXPENSE AND CRIME RATES
+
+
+theme_set(theme_bw())
+
+p =  ggplot(subset(plotData, state != 'United States'  & Year > 1999), 
+  aes(x= CorrectionPoliceExpenseRate, y = TotalCrimeRate, size = ViolentCrimeRate, colour = state)) +
+  geom_point(show.legend = FALSE, alpha = 0.7) +
+  scale_color_viridis_d() +
+  scale_size(range = c(2, 12)) +
+  facet_wrap( ~  Region, ncol=2) +
+  theme(legend.position = 'right') +
+  labs(x = "Police Expense per 100,000 by US Regions", y = "Crime Rate per 100,000")
+
+  echo = FALSE
+
+p = p + transition_time(Year) +
+  labs(title = "Year: {frame_time}")
+
+animate(p)
+
+anim_save("graphs/PCScatter.gif")
+
+```
+
+
+```{r}
+
+### PLOT BY STATE THE POLICE EXPENSE AND CRIME RATES
+
+options(repr.plot.width = 12, repr.plot.height = 5)
+
+p =  ggplot(subset(plotData, state != 'United States' & Year > 1999)) +
+  geom_col(aes(x= state, y = TotalCrimeRate, fill='Crime Rate'), stat = "identity",  width=.4) +
+  geom_point(aes(x = state, y = CorrectionPoliceExpenseRate, size = CorrectionPoliceExpenseRate), color = 'blue') +
+  theme(legend.position="none") + 
+  theme(text = element_text(size = 12), element_line(size = 0.4)) +
+  coord_flip() +
+  labs(x = "State", y = "Crime Rate and Police Expense per 100,000 by US States", color="Legend") + 
+  transition_time(Year) +
+  labs(title = "Year: {frame_time}")
+  
+animate(p)
+
+anim_save('graphs/CrimeRate2000.gif')
+
+```
+
+```{r}
+## CRIME RATE and POLICE EXPSNSE RATE PLOT FOR INDIVIDUAL STATES
+
+the_path <- getwd()
+ifelse(!dir.exists(file.path(the_path, "graphs/states")), dir.create(file.path(the_path, "graphs/states")), FALSE)
+
+
+for (i in seq_along(state_list)){
+ 
+  # Plot State data
+  
+  
+  p = ggplot(data = subset(plotData, plotData$state==state_list[i] &  Year > 1999), aes(x = Year)) +
+    geom_col(aes(y = TotalCrimeRate, fill='red'), width=.5) +
+    geom_point(aes(y = CorrectionPoliceExpenseRate), color = 'blue') +
+    scale_y_continuous(name = "Crime Rate", sec.axis = sec_axis(trans=~.*10,name="Expense Rate"))+
+    theme_minimal() +
+    theme(legend.position="bottom") + 
+    theme(
+      axis.title.y = element_text(color = 'red', size=10),
+      axis.title.y.right = element_text(color = 'blue', size=10)
+     ) +
+      labs(x = "Year", y = "Crime Rate and Police Expenses per 100,000")+
+      labs(title = state_list[i], subtitle = 'Crime and Police Expense From 2000 to 2014')
+    
+    
+  file_path <- paste0("graphs/states/",state_list[i],".png")
+  ggsave(p, file=file_path, width=5, height=4, type="cairo-png")
+  
+}
+```
+
+
+
+```{r}
+
+## YEAR OVER YEAR INCRMENTAL RATE & COST
+
+
+the_path <- getwd()
+ifelse(!dir.exists(file.path(the_path, "graphs/states_total")), dir.create(file.path(the_path, "graphs/states_total")), FALSE)
+
+for(i in seq_along(state_list)){
+  file_path = paste0("graphs/states_total/",state_list[i],"TotalRates.png")
+  png(file = file_path)
+  
+  testData = subset(stateOrderRates, state==state_list[i] & Year > 1999 )
+  
+  colors <- c('red', 'blue')
+  linetype <- c(1:2)
+  plotchar <- seq(18,19)
+  
+  # set up the plot
+  plot(testData$Year, testData$TotalCrimeRate_Inc, type="b", lwd=1.5, col=colors[1], lty=linetype[1], pch=plotchar[1],xlab="Year",
+        ylab="Rate Incrment ",main = paste(state_list[i],"Year over Year Rate Changes" ))
+  lines(testData$Year, testData$TotalExpenseRate_Inc, type="b", lwd=1.5, col=colors[2], lty=linetype[2], pch=plotchar[2])
+  legend("bottomright", c("Property Crime", "Police Expense"), cex=0.8, col=colors, pch=plotchar, lty=linetype)
+
+  dev.off()
+  
+}
+
+```
+
+
+Midwest crime: 3190, expense: $45,69 Northeast: 2613, $52,994 South: 3957, $49, 688 West: 3760, $62,139 US 3671, $57,727
+
+
+```{r}
+
+the_path <- getwd()
+ifelse(!dir.exists(file.path(the_path, "graphs/us_maps")), dir.create(file.path(the_path, "graphs/us_maps")), FALSE)
+
+year_list = unique(plotData$Year)
+
+
+for ( i in 1:length(year_list)){
+  
+  file_name = year_list[i]
+
+p = plot_usmap(data = subset(plotData,Year == year_list[i]), values = 'TotalCrimeRate', color='red') +
+  scale_fill_continuous(low = 'white', high = 'red', name = "Crime Rate per 100000", label = scales::comma) + 
+  labs(x=NULL, y=NULL, 
+        title="Crime Rate in the U.S.",
+        # The date is from the file name itself
+          subtitle=year_list[i],
+          caption="Data from 1977 to 2014\n U.S.Department of Justice, \nthe Federal Bureau of Investigatioin (FBI), \n Uniform Crime Reporting Statistics (UCR)") +
+  theme(plot.title=element_text(face="bold", family="Lato Regular", size=10)) + 
+  theme(plot.caption=element_text(face="bold", family="Lato Regular", size=7, color="gray", margin=margin(t=10, r=80))) +
+  theme(legend.position="top") +
+  theme(axis.line =  element_blank(),
+                   axis.text =  element_blank(),
+                   axis.ticks =  element_blank(),
+                   panel.grid.major = element_blank(),
+                   panel.grid.minor = element_blank(),
+                   panel.border = element_blank(),
+                   panel.background = element_blank())
+  
+ p
+ 
+file_path <- paste0("graphs/us_maps/",year_list[i], ".png")
+ggsave(p, file=file_path, width=5, height=4, type="cairo-png")
+
+}
+  
+```
+
+```{r}
+
+
+# Create a list of the png file names in the us_maps folder
+the_list <- paste0("graphs/us_maps/", list.files("graphs/us_maps/"))
+
+# apply the image_read function to each of the files and store it as a list in frames
+frames <- lapply(the_list, image_read)
+
+# use the image_animate function, which creates a GIF out of the list of images
+animation <- image_animate(image_join(frames), fps=4)
+
+# Print the animation
+#print(animation)
+
+# Save the image as us_map.gif
+image_write(animation,"graphs/us_maps/us_map.gif")
+
+```
+
+
+
+```{r}
+usTotalData = subset(plotData, plotData$state != 'United States')
+
+
+usDataTotalCrime = subset(usTotalData, select = c( CorrectionalExpenseRate, PoliceExpenseRate, EducationExpenseRate, HealthExpenseRate, HospitalExpenseRate,HousingExpenseRate, PublicWelfareExpenseRate, UnemploymentExpenseRate, TotalCrimeRate))
+
+```
+
+
+```{r}
+
+require(ggcorrplot)
+
+corr <- round(cor(usDataTotalCrime), 1)
+
+ggcorrplot(corr, method = "circle")
+
+ggcorrplot(corr, hc.order = TRUE, type = "lower",
+   outline.col = "white",
+   ggtheme = ggplot2::theme_gray,
+   colors = c("#6D9EC1", "white", "#E46726"),
+   lab = TRUE)
+
+```
+
+```{r}
+usTotalData = subset(plotData, plotData$state != 'United States' & Year > 1999)
+
+usDataTotalCrime = subset(usTotalData, select = c( CorrectionalExpenseRate, PoliceExpenseRate, EducationExpenseRate, HealthExpenseRate, HospitalExpenseRate,HousingExpenseRate, PublicWelfareExpenseRate, UnemploymentExpenseRate, TotalCrimeRate))
+```
+
+```{r}
+## FIND THE STATE AND YEAR WITH MAXIMUM CRIME RATE
+
+rowno = which.max(usTotalData$TotalCrimeRate)
+stateMax = usTotalData$state[rowno]
+yearMax = usTotalData$Year[rowno]
+
+stateMax
+yearMax
+```
+
+
+```{r}
+# Simple regression model Total Crime
+
+fit.full = lm(TotalCrimeRate~., data=usDataTotalCrime)
+summary(fit.full)
+summ(fit.full, vifs = TRUE, digits=3)
+plot_summs(fit.full, scale=TRUE)
+
+data.frame(vif(fit.full))
+
+par(mfrow = c(2, 2))
+plot(fit.full)
+  
+ncvTest(initialModel)
+#ad.test(residuals(initialModel))
+```
+
+
+```{r}
+### Stepwise Model
+
+
+formulae = formula(step(lm(TotalCrimeRate~., data=usDataTotalCrime),trace=F))
+
+fit.step = lm(formulae, data=usDataTotalCrime)
+
+summary(fit.step)
+summ(fit.step, digits=3)
+
+plot_summs(fit.step, scale=TRUE, model.names = c('Step Wise') )
+
+
+par(mfrow = c(2, 2))
+plot(initialModel)
+
+```
+
+
+```{r}
+# Creating N-fold datasets for prediciting the best model
+
+set.seed(42)
+nfold = 100
+
+train_data = list()
+test_data = list()
+for(i in 1:nfold) {
+  sample_idx = sample.int(n = nrow(usDataTotalCrime),size = floor(.80*nrow(usDataTotalCrime)),replace=F)
+  train_data[[i]] = usDataTotalCrime[sample_idx, ]
+  test_data[[i]] = usDataTotalCrime[-sample_idx,]
+}
+
+```
+
+```{r}
+### Full model
+
+#acc_full = 1:nfold
+rmse_full = 1:nfold
+#r2_full = 1:nfold
+
+for(i in 1:nfold) {
+  fit.full = lm(TotalCrimeRate~., data=train_data[[i]])
+  tpredict = round(predict(fit.full, newdata = test_data[[i]], type='response'))
+  #acc_full[i] = sum(diag(table(test_data[[i]]$TotalCrimeRate, tpredict))) / nrow(test_data[[i]])
+  rmse_full[i] = sqrt(mean((tpredict - test_data[[i]]$TotalCrimeRate)^2))
+}
+
+summary(fit.full)
+summ(fit.full, digits=3)
+
+plot_summs(fit.full, scale=TRUE)
+plot_full = tpredict - test_data[[i]]$TotalCrimeRate
+
+full.results = data.frame(
+    Name = 'Full',
+    RMSE = mean(rmse_full)
+  )
+
+
+```
+
+
+```{r}
+### Stepwise Model
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(TotalCrimeRate~., data=train_data[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data[[i]]$TotalCrimeRate, tpredict))) / nrow(test_data[[i]])
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+#acc_step = 1:nfold
+rmse_step = 1:nfold
+#r2_step = 1:nfold
+
+for(i in 1:nfold) {
+    fit.step = lm(formulae[[best_model_idx]], data=train_data[[i]])
+    tpredict = round(predict(fit.step, newdata = test_data[[i]],type='response'))
+    rmse_step[i] = sqrt(mean((tpredict - test_data[[i]]$TotalCrimeRate)^2))
+}
+
+
+summary(fit.step)
+summ(fit.step, digits=3)
+
+plot_summs(fit.step, scale=TRUE, model.names =c("Step Wise"))
+plot_step = tpredict - test_data[[i]]$TotalCrimeRate
+
+
+step.results = data.frame(
+    Name = 'Step',
+    RMSE = mean(rmse_step)
+  )
+
+```
+
+
+```{r}
+### Ridge Model
+
+rmse_ridge = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(TotalCrimeRate~., train_data[[i]])[, -1]
+      y = train_data[[i]]$TotalCrimeRate
+      cv.ridge = cv.glmnet(x, y, type.measure="mse",alpha = 0, family = "gaussian")
+      fit.ridge = cv.glmnet(x, y, type.measure="mse", alpha = 0, lambda=cv.ridge$lamba.min,family = "gaussian")
+      x.test = model.matrix(TotalCrimeRate~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.ridge, s=fit.ridge$lambda.min, newx=x.test))
+      rmse_ridge[i] = sqrt(mean((tpredict - test_data[[i]]$TotalCrimeRate)^2))
+    }
+
+coef(fit.ridge)
+#summ(fit.ridge)
+
+#plot_summs(fit.full, fit.step,fit.ridge, scale=TRUE, model.names =c('Full', "Step Wise", "Ridge"))
+
+plot_ridge = tpredict - test_data[[i]]$TotalCrimeRate
+
+ridge.results = data.frame(
+    Name = 'Ridge',
+    RMSE = mean(rmse_ridge)
+  )
+
+```
+
+```{r}
+### Lasso Model
+
+rmse_lasso = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(TotalCrimeRate~., train_data[[i]])[, -1]
+      y = train_data[[i]]$TotalCrimeRate
+      cv.lasso = cv.glmnet(x, y, type.measure="mse",alpha = 1, family = "gaussian")
+      fit.lasso = cv.glmnet(x, y, type.measure="mse", alpha = 1, lambda=cv.lasso$lamba.min,family = "gaussian")
+      x.test = model.matrix(TotalCrimeRate~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.lasso, s=fit.lasso$lambda.min, newx=x.test))
+      rmse_lasso[i] = sqrt(mean((tpredict - test_data[[i]]$TotalCrimeRate)^2))
+    }
+
+coef(fit.lasso)
+plot_lasso = tpredict - test_data[[i]]$TotalCrimeRate
+
+lasso.results = data.frame(
+    Name = 'Lasso',
+    RMSE = mean(rmse_lasso)
+  )
+
+
+```
+
+
+
+
+
+```{r}
+### Elastic Net
+
+rmse_elastic = 1:nfold
+
+  for(i in 1:nfold) {
+      
+      fit.elastic = train(TotalCrimeRate~., train_data[[i]], method='glmnet', trControl=trainControl('cv', number=10))
+      x.test = model.matrix(TotalCrimeRate~., test_data[[i]])[, -1]
+      
+      tpredict = predict(fit.elastic, x.test)
+      
+      rmse_elastic[i] = sqrt(mean((tpredict - test_data[[i]]$TotalCrimeRate)^2))
+    }
+
+plot_elastic = tpredict - test_data[[i]]$TotalCrimeRate
+
+elastic.results = data.frame(
+    Name = 'Elastic',
+    RMSE = mean(rmse_elastic)
+  )
+
+```
+
+
+
+```{r}
+
+## Plottting Results
+modelResults = list()
+modelResults = rbind(modelResults, full.results)
+modelResults = rbind(modelResults, step.results)
+modelResults = rbind(modelResults, ridge.results)
+modelResults = rbind(modelResults, lasso.results)
+#modelResults = rbind(modelResults, elastic.results)
+
+
+modelResults
+
+  # stepwise model
+    plot(1:nfold, rmse_step, "l", col="red",
+         xlab="splits", ylab="RMSE", 
+         main="full  vs lstep wise vs ridege vs lasso model",
+         ylim=c(600, 900))
+    points(1:nfold, rmse_step, col="red")
+    
+    # full model
+    lines(1:nfold, rmse_full, col="blue", lty=2)
+    points(1:nfold, rmse_full, col="blue")
+    
+    # lasso model
+    lines(1:nfold, rmse_lasso, col="black", lty=3)
+    points(1:nfold, rmse_lasso, col="black")
+    
+    # ridge model
+    lines(1:nfold, rmse_ridge, col="green", lty=3)
+    points(1:nfold, rmse_ridge, col="green")
+    
+    # elastic-net model
+    #lines(1:nfold, rmse_elastic, col="yellow", lty=3)
+    #points(1:nfold, rmse_elastic, col="yellow")
+    
+    legend('topright', legend=c('stepwise model', 'lasso model', 'full model', 'ridge model'), 
+           col=c('red', 'black', 'blue', 'green', 'yellow'), lty=c(1, 3, 2), pch=10, cex=0.6)
+
+
+
+
+```
+
+```{r}
+
+#### Plot "The difference between predict and real values" ####
+###                        "Initial" = plot_full,
+
+data_plot <- data.frame("Initial" = plot_full,
+                        "Ridge" = plot_ridge,
+                        "Lasso" = plot_lasso,
+                        "sTEP" = plot_step)
+
+
+                        
+
+
+data_plot$Id <- row.names(data_plot)
+
+
+data_plot <- gather(data_plot, method, value, - Id)
+
+data_plot$method <- as.factor(data_plot$method)
+
+
+#data.frame(data_plot)
+
+levels(data_plot$method) <- c( 
+                              paste0("Initial"),
+                              paste0("Ridge"),
+                              paste0("Lasso"),
+                              paste0("Step"))
+
+
+ggplot(data_plot, aes(x = Id, y = value, colour = method))+
+    geom_point(alpha = 0.7, size = 2) +
+    ggtitle("The difference between predict and real crime rates")+
+    labs(x = "Row Id", y = "The difference between crime rates", colour = " ")+
+    scale_x_discrete(breaks = c(0))+
+    theme(legend.position = "top",
+          legend.text = element_text(size = 10),
+          axis.text.x = element_blank(), 
+          axis.title.x = element_text(size = 8),
+          axis.text.y = element_text(size = 8), 
+          axis.title.y = element_text(size = 8),
+          title = element_text(size = 14))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
