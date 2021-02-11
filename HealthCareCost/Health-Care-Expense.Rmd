@@ -1,0 +1,1861 @@
+---
+title: "Health Care Cost"
+output:
+  pdf_document: default
+  
+---
+
+```{r setup, include=FALSE}
+
+```
+
+
+```{r  warning=FALSE}
+
+# All required libraries
+
+require(tidyr)      ##  Data wrangling - https://rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf
+
+require(car)        ## Applied Regression - https://www.rdocumentation.org/packages/car/versions/3.0-9
+
+require(knitr)              ## dynamic report generation in R
+
+require(DT)                 ## display data in html tables
+
+require(ggplot2)    ## declaratively creating graphics - https://ggplot2.tidyverse.org/ 
+
+require(gridExtra)          ## arrange visualizations using grid 
+
+require(dplyr)              ## easy data wrangling on small data frames
+
+require(data.table)         ## fast data wrangling and analysis
+
+require(funModeling)        ## table with counts on missing values. Do not load before psych or caret. It will mask some stuff.
+
+require(psych)    ## Functions for multivariate analysis and scale construction -  https://www.rdocumentation.org/packages/psych/versions/2.0.8
+
+require(caret)    ## Classification and Regressiion trainging - http://topepo.github.io/caret/index.html
+
+require(caretEnsemble)      ## ensemble modelling
+
+require(glmnet)
+
+require(LiblineaR)          ## svm
+
+require(vtreat)             ## one hot encode and ignore factor levels with low frequency
+
+require(R330)
+
+require(leaps)
+
+require(corrplot)
+
+require(stringr)
+
+require(nortest)
+
+require(MASS)
+
+require(jtools)     ## Series of fuctions to automate tedious research tasks - https://jtools.jacob-long.com/  
+
+```
+
+
+```{r  warning=FALSE}
+
+#Load the data and initialize necessary variables
+
+medicalData = read.csv("http://www.datadescant.com/stat109/hospvisits.csv")
+
+head(medicalData)
+
+response_df = medicalData['totalexp']  # Y variable
+predictors_df = medicalData[, !names(medicalData) %in% "totalexp" ]  # X variables
+
+# Data frame to store the results of the various models
+modelResults = setNames(data.frame(matrix(ncol = 7, nrow = 0)), c("Name", "Model", "RMSE", "R2", "MAE", "ACC")) 
+
+summary(medicalData)
+
+# Create train & test data set
+
+set.seed(123)# set seed to ensure you always have same random numbers generated
+
+sample = sample.int(n = nrow(medicalData), 
+                     size = floor(.80*nrow(medicalData)), replace = F) # Randomly identifies the rows equal to sample size (creates a value for dividing the data into train and test. In this case the value is defined as 80% of the number of rows in the dataset) from  all the rows of the dataset and stores the row number in sample.
+
+medicalData.Train = medicalData[sample,]
+medicalData.Test = medicalData[-sample,]
+```
+
+```{r  warning=FALSE}
+
+# Data exploration
+
+numericVars = which(sapply(medicalData, is.numeric)) #index vector numeric variables
+numericVarNames = names(numericVars) #saving names vector for use later on
+##cat('There are', length(numericVars), 'numeric variables')
+
+par(mfrow = c(2, 2))
+
+hist(medicalData$totalexp,
+main="Total Helath Care Expenses",
+xlab="Expenses in Dollars",
+xlim=c(0,150000),
+col="blue",
+freq=TRUE
+)
+
+hist(log(medicalData$totalexp),
+main="Log of Total Helath Care Expenses",
+xlab="Log of Expenses in Dollars",
+col="blue",
+freq=TRUE
+)
+
+qqnorm(medicalData$totalexp, main = "Total Expense Q-Q Plot", xlab = "Theoretical Quantiles", 
+       ylab = "Sample Quantiles", plot.it = TRUE, datax = FALSE)
+qqline(medicalData$totalexp, datax = FALSE, distribution = qnorm, 
+       probs = c(0.25, 0.75), qtype = 7)
+
+
+qqnorm(log(medicalData$totalexp), main = "Log Total Expense Q-Q Plot", xlab = "Theoretical Quantiles", 
+       ylab = "Sample Quantiles", plot.it = TRUE, datax = FALSE)
+qqline(log(medicalData$totalexp), datax = FALSE, distribution = qnorm, 
+       probs = c(0.25, 0.75), qtype = 7)
+```
+
+```{r}
+# Check for correlation among the variables
+
+cor_numVar = cor(medicalData, use="pairwise.complete.obs") #correlations of all numeric variables
+cor_sorted = as.matrix(sort(cor_numVar[,'totalexp'], decreasing = TRUE))
+
+#select only high corelations
+CorHigh = names(which(apply(cor_sorted, 1, function(x) abs(x)>0.1)))
+cor_numVar = cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos = "lt")
+
+corrplot(cor_numVar, title = "",
+
+            type = "lower", 
+
+            order = "hclust", 
+
+            hclust.method = "centroid",
+
+            tl.cex = 0.8,
+
+            tl.col = "black", 
+
+            tl.srt = 45)
+```
+
+```{r}
+# More data exploration
+
+# Race Group
+p1 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(race_grp), y=totalexp))+
+        geom_boxplot(col='blue') + labs(x='Race Group',y='Total Expanse') +
+        scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Health Status
+p2 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(srhealth), y=totalexp))+
+        geom_boxplot(col='blue') + labs(x='Health Status',y='Total Expanse') +
+        scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Marital Status
+p3 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(marital), y=totalexp))+
+        geom_boxplot(col='blue') + labs(x='Marital Status',y='Total Expanse') +
+        scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Mental Health
+p4 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(mntl_hlth), y=totalexp))+
+        geom_boxplot(col='blue') + labs(x='Mental Health',y='Total Expanse') +
+        scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Doctor Visits
+p5 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=dr_visits, y=totalexp)) +
+  geom_point(col='blue') +
+  geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  labs(x='Doctor Visits',y='Total Expanse')
+
+# Education
+p6 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(educ), y=totalexp))+
+        geom_boxplot(col='blue') + labs(x='Education',y='Total Expanse') +
+        scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+grid.arrange(p1,p2,p3,p4,nrow = 2)
+grid.arrange(p5,p6,nrow = 1)
+```
+
+```{r}
+
+# Function to print all graphs and predictiion results for the model
+# Inputs to the model, the data and the name of the model
+# Output is a data frame with RMSE, R2, MAE values for each model
+
+model_result = function(model,train){
+  
+  formulae = summary(model)['call']
+  regForm = substr(formulae,13,str_length(formulae)-1)
+  
+  sample_size = nrow(train)
+  num_variable = ncol(train)
+  
+  resd = residuals(model)
+  fits = fitted(model)
+  sresd = rstudent(model)
+  stdresd = rstandard(model)
+  
+  par(mfrow = c(2, 2))
+  
+  # Outliers
+  outlierTest(model) # Bonferonni p-value for most extreme obs
+  qqPlot(model, main="QQ Plot") #qq plot for studentized resid
+  
+   
+  # Plot the histogram of the residuals
+  
+  hist(stdresd,
+    main="Histogram of Standardized Residuals",
+    xlab="Standarized Residuals",
+    col="blue",
+    freq=TRUE)
+  line(stdresd)
+  
+  #Plot Predicated values vd Studentized Residuals
+  influencePlot(model,main='Influence Plot')
+  
+  #Influential Observations
+  #Plot Cook's Distance
+  plot(model, which = 4) +
+    abline(h = 4/(sample_size - num_variable-1), col="red")
+  
+ 
+  par(mfrow = c(2, 2))
+  plot(model, which = 1) # Fitted vs Residuals
+  plot(fits,sresd)
+  plot(model, which = 3)
+  plot(model, which = 5)
+  
+  par(mfrow = c(2, 2))
+  plot(train$totalexp, fits)
+  plot(train$totalexp, resd)
+  
+  #Anderson-Darling Test For Normality
+ adResult = ad.test(resd)
+ adPvalue = adResult['p.value']
+ 
+}
+
+```
+
+
+```{r}
+
+## Plotting Full Model
+
+
+plotting_results = function(measure, full, psig, step, steppair, ridge, lasso,  elastic){
+ 
+# Full model
+  points(1:nfold, full, col="red")
+
+# Significant P-value model
+  lines(1:nfold, psig, col="yellow", lty=5)
+  points(1:nfold, psig, col="yellow")  
+  
+# Step model
+  lines(1:nfold, step, col="blue", lty=2)
+  points(1:nfold, step, col="blue")
+  
+# Step Pair model
+  lines(1:nfold, steppair, col="purple", lty=6)
+  points(1:nfold, steppair, col="purple")
+  
+# Ridge model
+  lines(1:nfold, ridge, col="green", lty=4)
+  points(1:nfold, ridge, col="green")
+  
+# Lasso model
+  lines(1:nfold, lasso, col="black", lty=3)
+  points(1:nfold, lasso, col="black")
+
+# Elastic model
+  lines(1:nfold, elastic, col="purple", lty=7)
+  points(1:nfold, elastic, col="purple")
+  
+  
+    
+  legend('topright', legend=c('Full model', 'Significant P-value model', 'Step model', 'Lasso model', 'Ridge model', 'Elastic model'), 
+           col=c('red', 'yellow', 'blue', 'black', 'green', 'purple'), lty=c(1, 2, 3, 4, 5, 7), pch=10, cex=0.6)
+  
+ 
+} 
+
+```
+
+
+```{r warning=FALSE}
+# Simple regression model
+
+initialModel = lm((totalexp)~., data=medicalData.Train)
+summary(initialModel)
+
+ncvTest(initialModel)
+ad.test(residuals(initialModel))
+
+data.frame(vif(initialModel))
+
+model_result(initialModel,medicalData.Train)
+
+tpredict = predict(initialModel, newdata = medicalData.Test, type='response')
+
+plot_full = tpredict - medicalData.Test$totalexp
+
+intial.results = data.frame(
+    Name = 'Initial',
+    RMSE = mean(rmse_full),
+    Accuracy = mean(acc_full),
+    R2 = mean(r2_full)
+  )
+```
+
+
+```{r}
+### Stepwise Model
+
+
+formulae = formula(step(lm(totalexp~.-srhealth-mntl_hlth+as.factor(srhealth)+as.factor(mntl_hlth), 
+                           data=medicalData.Train),trace=F))
+
+fit.step = lm(formulae, data=medicalData.Train)
+
+
+summary(fit.step)
+model_result(fit.step, medicalData.Train)
+
+ncvTest(fit.step)
+ad.test(residuals(fit.step))
+
+```
+
+
+
+```{r}
+
+all_vars = names(initialModel[[1]])[-1]  # names of all X variables
+
+# Get the non-significant vars
+summ = summary(initialModel)  # model summary
+pvals = summ[[4]][, 4]  # get all p values
+not_significant = character()  # init variables that aren't statsitically significant
+not_significant = names(which(pvals > 0.1))
+not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+# If there are any non-significant variables, 
+while(length(not_significant) > 0){
+  all_vars = all_vars[!all_vars %in% not_significant[1]]
+  myForm = as.formula(paste("(totalexp) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+  pvalueModel = lm(myForm, data=medicalData.Train)  # re-build model with new formula
+  
+  # Get the non-significant vars.
+  summ = summary(pvalueModel)
+  pvals = summ[[4]][, 4]
+  not_significant = character()
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]
+}
+
+summary(pvalueModel)
+
+ncvTest(pvalueModel)
+ad.test(residuals(pvalueModel))
+
+model_result(pvalueModel,medicalData.Train)
+
+```
+
+```{r warning=FALSE}
+
+# Use Log transofrm to reduce hetroskedacity in the model
+
+log_model = lm(log(totalexp)~., data=medicalData.Train)
+summary(log_model)
+
+ncvTest(log_model)
+ad.test(residuals(log_model))
+
+model_result(log_model,medicalData.Train)
+
+```
+```{r}
+
+all_vars = names(log_model[[1]])[-1]  # names of all X variables
+
+# Get the non-significant vars
+summ = summary(log_model)  # model summary
+pvals = summ[[4]][, 4]  # get all p values
+not_significant = character()  # init variables that aren't statsitically significant
+not_significant = names(which(pvals > 0.1))
+not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+# If there are any non-significant variables, 
+while(length(not_significant) > 0){
+  all_vars = all_vars[!all_vars %in% not_significant[1]]
+  myForm = as.formula(paste("log(totalexp) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+  logSigPModel = lm(myForm, data=medicalData.Train)  # re-build model with new formula
+  
+  # Get the non-significant vars.
+  summ = summary(logSigPModel)
+  pvals = summ[[4]][, 4]
+  not_significant = character()
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]
+}
+
+summary(logSigPModel)
+
+ncvTest(logSigPModel)
+ad.test(residuals(logSigPModel))
+
+model_result(logSigPModel,medicalData.Train)
+
+```
+
+```{r warning=FALSE}
+## BOX COX TRANSOFRMATION
+## Determine the Lambda value
+
+b = boxcox(initialModel)
+
+lamda = b$x
+
+lik = b$y
+
+bc = cbind(lamda, lik) # combine lambda and lik
+
+sorted_bc = bc[order(-lik),] # values are sorted to identify the lambda value for the maximum log likelihood for obtaining minimum SSE
+
+head(sorted_bc, n = 10)
+
+boxcox(initialModel, plotit = TRUE, lambda = seq(0.0, 1.0, by = 0.01))
+
+```
+
+```{r warning=FALSE}
+# Box Cox lambada = 0.2 regression model
+
+bcModel = lm(totalexp^0.2~., data=medicalData.Train)
+summary(bcModel)
+
+ncvTest(bcModel)
+ad.test(residuals(bcModel))
+
+model_result(bcModel,medicalData.Train)
+
+```
+
+
+```{r}
+all_vars = names(bcModel[[1]])[-1]  # names of all X variables
+
+# Get the non-significant vars
+summ = summary(bcModel)  # model summary
+pvals = summ[[4]][, 4]  # get all p values
+not_significant = character()  # init variables that aren't statsitically significant
+not_significant = names(which(pvals > 0.1))
+not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+# If there are any non-significant variables, 
+while(length(not_significant) > 0){
+  all_vars = all_vars[!all_vars %in% not_significant[1]]
+  myForm = as.formula(paste("(totalexp^0.2) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+  bcSigPModel = lm(myForm, data=medicalData.Train)  # re-build model with new formula
+  
+  # Get the non-significant vars.
+  summ = summary(bcSigPModel)
+  pvals = summ[[4]][, 4]
+  not_significant = character()
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]
+}
+
+summary(bcSigPModel)
+
+ncvTest(bcSigPModel)
+ad.test(residuals(bcSigPModel))
+
+model_result(bcSigPModel,medicalData.Train)
+```
+
+```{r}
+
+# REMOVING OUTLIERS
+
+# INFLUENTIAL ROW NUMBERS
+
+cooks_dist = cooks.distance(initialModel)
+
+influential = as.numeric(names(cooks_dist)[(cooks_dist > (4/(nrow(medicalData) - ncol(medicalData) - 1- 1)))])
+
+medicalData.Purged = medicalData[-influential, ]
+
+
+# Create train & test data set
+
+set.seed(123)
+sample = sample.int(n = nrow(medicalData.Purged), 
+                     size = floor(.80*nrow(medicalData)), replace = F)
+medicalData.Purged.Train = medicalData.Purged[sample,]
+medicalData.Purged.Test = medicalData.Purged[-sample,]
+
+
+# Creating N-fold datasets for prediciting the best model
+
+set.seed(42)
+nfold = 10
+
+train_data = list()
+test_data = list()
+for(i in 1:nfold) {
+  sample_idx = sample.int(n = nrow(medicalData),size = floor(.80*nrow(medicalData)),replace=F)
+  train_data[[i]] = medicalData[sample_idx, ]
+  test_data[[i]] = medicalData[-sample_idx,]
+}
+
+train_data.Purged = list()
+test_data.Purged = list()
+for(i in 1:nfold) {
+  sample_idx = sample.int(n = nrow(medicalData.Purged),size = floor(.80*nrow(medicalData.Purged)),replace=F)
+  train_data.Purged[[i]] = medicalData.Purged[sample_idx, ]
+  test_data.Purged[[i]] = medicalData.Purged[-sample_idx,]
+}
+
+```
+
+```{r}
+
+### Full model
+
+acc_full = 1:nfold
+rmse_full = 1:nfold
+r2_full = 1:nfold
+
+for(i in 1:nfold) {
+  fit.full = lm(totalexp~., data=train_data[[i]])
+  tpredict = round(predict(fit.full, newdata = test_data[[i]], type='response'))
+  acc_full[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+  rmse_full[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  r2_full[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+summary(fit.full)
+model_result(fit.full, train_data[[i]])
+plot_full = tpredict - test_data[[i]]$totalexp
+
+full.results = data.frame(
+    Name = 'Full',
+    RMSE = mean(rmse_full),
+    Accuracy = mean(acc_full),
+    R2 = mean(r2_full)
+  )
+
+```
+
+```{r}
+
+### Full model with Purged Data
+
+acc_fullPurged = 1:nfold
+rmse_fullPurged = 1:nfold
+r2_fullPurged = 1:nfold
+
+for(i in 1:nfold) {
+  fit.fullPurged = lm(totalexp~., data=train_data.Purged[[i]])
+  tpredict = round(predict(fit.fullPurged, newdata = test_data.Purged[[i]], type='response'))
+  acc_fullPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+  rmse_fullPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+  r2_fullPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+}
+
+summary(fit.fullPurged)
+model_result(fit.fullPurged, train_data.Purged[[i]])
+plot_fullPurged = tpredict - test_data.Purged[[i]]$totalexp
+
+ncvTest(fit.fullPurged)
+ad.test(residuals(fit.fullPurged))
+
+fullPurged.results = data.frame(
+    Name = 'Full Purged',
+    RMSE = mean(rmse_fullPurged),
+    Accuracy = mean(acc_fullPurged),
+    R2 = mean(r2_fullPurged)
+  )
+ 
+
+```
+
+```{r}
+###  Remove non-signficant varaibles
+
+acc_psig = 1:nfold
+rmse_psig = 1:nfold
+r2_psig = 1:nfold
+
+for (i in 1:nfold){
+  fit.full = lm(totalexp~., data=train_data[[i]])
+  all_vars = names(fit.full[[1]])[-1]  # names of all X variables
+
+  # Get the non-significant vars
+  summ = summary(fit.full)  # model summary
+  pvals = summ[[4]][, 4]  # get all p values
+  not_significant = character()  # init variables that aren't statsitically significant
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+  # If there are any non-significant variables, 
+  while(length(not_significant) > 0){
+    all_vars = all_vars[!all_vars %in% not_significant[1]]
+    myForm = as.formula(paste("(totalexp) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+    fit.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  
+    # Get the non-significant vars.
+    summ = summary(fit.psig)
+    pvals = summ[[4]][, 4]
+    not_significant = character()
+    not_significant = names(which(pvals > 0.1))
+    not_significant = not_significant[!not_significant %in% "(Intercept)"]
+  }
+
+
+  fit.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  tpredict = round(predict(fit.psig, newdata = test_data[[i]], type='response'))
+  acc_psig[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+  rmse_psig[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  r2_psig[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+summary(fit.psig)
+model_result(fit.psig, train_data[[i]])
+plot_psig = tpredict - test_data[[i]]$totalexp
+
+ncvTest(fit.psig)
+ad.test(residuals(fit.psig))
+
+psig.results = data.frame(
+    Name = 'Significat P-Value',
+    RMSE = mean(rmse_psig),
+    Accuracy = mean(acc_psig),
+    R2 = mean(r2_psig)
+  )
+
+```
+
+```{r}
+###  Remove non-significant  variables Purged data
+
+acc_psigPurged = 1:nfold
+rmse_psigPurged = 1:nfold
+r2_psigPurged = 1:nfold
+
+for (i in 1:nfold){
+  fit.fullPurged = lm(totalexp~., data=train_data.Purged[[i]])
+  all_vars = names(fit.fullPurged[[1]])[-1]  # names of all X variables
+
+  # Get the non-significant vars
+  summ = summary(fit.full)  # model summary
+  pvals = summ[[4]][, 4]  # get all p values
+  not_significant = character()  # init variables that aren't statsitically significant
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+  # If there are any non-significant variables, 
+  while(length(not_significant) > 0){
+    all_vars = all_vars[!all_vars %in% not_significant[1]]
+    myForm = as.formula(paste("(totalexp) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+    fit.psigPurged = lm(myForm, data=train_data.Purged[[i]])  # re-build model with new formula
+  
+    # Get the non-significant vars.
+    summ = summary(fit.psigPurged)
+    pvals = summ[[4]][, 4]
+    not_significant = character()
+    not_significant = names(which(pvals > 0.1))
+    not_significant = not_significant[!not_significant %in% "(Intercept)"]
+  }
+
+
+  fit.psigPurged = lm(myForm, data=train_data.Purged[[i]])  # re-build model with new formula
+  tpredict = round(predict(fit.psigPurged, newdata = test_data.Purged[[i]], type='response'))
+  acc_psigPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+  rmse_psigPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+  r2_psigPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+}
+
+summary(fit.psigPurged)
+model_result(fit.psigPurged, train_data.Purged[[i]])
+plot_psigPurged = tpredict - test_data.Purged[[i]]$totalexp
+
+ncvTest(fit.psigPurged)
+ad.test(residuals(fit.psigPurged))
+
+psigPurged.results = data.frame(
+    Name = 'Significant P-Value Purged',
+    RMSE = mean(rmse_psigPurged),
+    Accuracy = mean(acc_psigPurged),
+    R2 = mean(r2_psigPurged)
+  )
+
+```
+
+```{r warning=FALSE}
+
+### Stepwise Model
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(totalexp~., data=train_data[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_step = 1:nfold
+rmse_step = 1:nfold
+r2_step = 1:nfold
+
+for(i in 1:nfold) {
+    fit.step = lm(formulae[[best_model_idx]], data=train_data[[i]])
+    tpredict = round(predict(fit.step, newdata = test_data[[i]],type='response'))
+    acc_step[i] = sum(diag(table(test_data[[i]]$totalexp,tpredict))) / nrow(test_data[[i]])
+    rmse_step[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+    r2_step[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+
+summary(fit.step)
+model_result(fit.step, train_data[[i]])
+plot_step = tpredict - test_data[[i]]$totalexp
+
+ncvTest(fit.step)
+ad.test(residuals(fit.step))
+
+step.results = data.frame(
+    Name = 'Step',
+    RMSE = mean(rmse_step),
+    Accuracy = mean(acc_step),
+    R2 = mean(r2_step)
+  )
+
+```
+
+
+```{r warning=FALSE}
+### Stepwise Model with Purged data 
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(totalexp~., data=train_data.Purged[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data.Purged[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data.Purged[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_stepPurged = 1:nfold
+rmse_stepPurged = 1:nfold
+r2_stepPurged = 1:nfold
+
+for(i in 1:nfold) {
+    fit.stepPurged = lm(formulae[[best_model_idx]], data=train_data.Purged[[i]])
+    tpredict = round(predict(fit.stepPurged, newdata = test_data.Purged[[i]],type='response'))
+    acc_stepPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp,tpredict))) / nrow(test_data.Purged[[i]])
+    rmse_stepPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+    r2_stepPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+}
+
+
+summary(fit.stepPurged)
+model_result(fit.stepPurged, train_data.Purged[[i]])
+plot_step = tpredict - test_data.Purged[[i]]$totalexp
+
+stepPurged.results = data.frame(
+    Name = 'Step Purged',
+    RMSE = mean(rmse_stepPurged),
+    Accuracy = mean(acc_stepPurged),
+    R2 = mean(r2_stepPurged)
+  )
+
+```
+
+```{r}
+
+### PAIR WISE MODEL 
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(totalexp~. + .^2, data=train_data[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_stepPair = 1:nfold
+rmse_stepPair = 1:nfold
+r2_stepPair = 1:nfold
+
+for(i in 1:nfold) {
+    fit.stepPair = lm(formulae[[best_model_idx]], data=train_data[[i]])
+    tpredict = round(predict(fit.stepPair, newdata = test_data[[i]],type='response'))
+    acc_stepPair[i] = sum(diag(table(test_data[[i]]$totalexp,tpredict))) / nrow(test_data.Purged[[i]])
+    rmse_stepPair[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+    r2_stepPair[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+
+summary(fit.stepPair)
+model_result(fit.stepPair, train_data[[i]])
+plot_stepPair = tpredict - test_data[[i]]$totalexp
+
+stepPair.results = data.frame(
+    Name = 'Step Pair',
+    RMSE = mean(rmse_stepPair),
+    Accuracy = mean(acc_stepPair),
+    R2 = mean(r2_stepPair)
+  )
+
+```
+
+```{r}
+### PAIR WISE PURGED MODEL 
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(totalexp~. + .^2, data=train_data.Purged[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data.Purged[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data.Purged[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data.Purged[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_stepPairPurged = 1:nfold
+rmse_stepPairPurged = 1:nfold
+r2_stepPairPurged = 1:nfold
+
+for(i in 1:nfold) {
+    fit.stepPair = lm(formulae[[best_model_idx]], data=train_data.Purged[[i]])
+    tpredict = round(predict(fit.stepPair, newdata = test_data.Purged[[i]],type='response'))
+    acc_stepPairPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp,tpredict))) / nrow(test_data.Purged[[i]])
+    rmse_stepPairPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+    r2_stepPairPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+}
+
+
+summary(fit.stepPair)
+model_result(fit.stepPair, train_data.Purged[[i]])
+plot_stepPairPurged = tpredict - test_data.Purged[[i]]$totalexp
+
+stepPairPurged.results = data.frame(
+    Name = 'Step Pair Purged',
+    RMSE = mean(rmse_stepPairPurged),
+    Accuracy = mean(acc_stepPairPurged),
+    R2 = mean(r2_stepPairPurged)
+  )
+```
+
+
+```{r warning=FALSE}
+
+### Ridge Intial Model
+
+acc_ridge = 1:nfold
+rmse_ridge = 1:nfold
+r2_ridge = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(totalexp~., train_data[[i]])[, -1]
+      y = train_data[[i]]$totalexp
+      cv.ridge = cv.glmnet(x, y, type.measure="mse",alpha = 0, family = "gaussian")
+      fit.ridge = cv.glmnet(x, y, type.measure="mse", alpha = 0, lambda=cv.ridge$lamba.min,family = "gaussian")
+      x.test = model.matrix(totalexp~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.ridge, s=fit.ridge$lambda.min, newx=x.test))
+      acc_ridge[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_ridge[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+      r2_ridge[i] = R2(tpredict, test_data[[i]]$totalexp)
+    }
+
+plot_ridge = tpredict - test_data[[i]]$totalexp
+
+ridge.results = data.frame(
+    Name = 'Ridge',
+    RMSE = mean(rmse_ridge),
+    Accuracy = mean(acc_ridge),
+    R2 = mean(r2_ridge)
+  )
+
+```
+
+```{r}
+
+### Ridge Purged Model
+
+acc_ridgePurged = 1:nfold
+rmse_ridgePurged = 1:nfold
+r2_ridgePurged = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(totalexp~., train_data.Purged[[i]])[, -1]
+      y = train_data.Purged[[i]]$totalexp
+      cv.ridgePurged = cv.glmnet(x, y, type.measure="mse",alpha = 0, family = "gaussian")
+      fit.ridgePurged = cv.glmnet(x, y, type.measure="mse", alpha = 0, lambda=cv.ridgePurged$lamba.min,family = "gaussian")
+      x.test = model.matrix(totalexp~., test_data.Purged[[i]])[, -1]
+      
+      tpredict = round(predict(fit.ridgePurged, s=fit.ridgePurged$lambda.min, newx=x.test))
+      acc_ridgePurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_ridgePurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+      r2_ridgePurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+    }
+
+plot_ridgePurged = tpredict - test_data.Purged[[i]]$totalexp
+
+ridgePurged.results = data.frame(
+    Name = 'Ridge Purged',
+    RMSE = mean(rmse_ridgePurged),
+    Accuracy = mean(acc_ridgePurged),
+    R2 = mean(r2_ridgePurged)
+  )
+
+```
+
+```{r}
+### Lasso Model
+
+acc_lasso = 1:nfold
+rmse_lasso = 1:nfold
+r2_lasso = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(totalexp~., train_data[[i]])[, -1]
+      y = train_data[[i]]$totalexp
+      cv.lasso = cv.glmnet(x, y, type.measure="mse",alpha = 1, family = "gaussian")
+      fit.lasso = cv.glmnet(x, y, type.measure="mse", alpha = 1, lambda=cv.lasso$lamba.min,family = "gaussian")
+      x.test = model.matrix(totalexp~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.lasso, s=fit.lasso$lambda.min, newx=x.test))
+      acc_lasso[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_lasso[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+      r2_lasso[i] = R2(tpredict, test_data[[i]]$totalexp)
+    }
+
+plot_lasso = tpredict - test_data[[i]]$totalexp
+
+lasso.results = data.frame(
+    Name = 'Lasso',
+    RMSE = mean(rmse_lasso),
+    Accuracy = mean(acc_lasso),
+    R2 = mean(r2_lasso)
+  )
+
+
+```
+
+```{r}
+### Lasso Purged Model 
+
+acc_lassoPurged = 1:nfold
+rmse_lassoPurged = 1:nfold
+r2_lassoPurged = 1:nfold
+rmse.new = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(totalexp~., train_data.Purged[[i]])[, -1]
+      y = train_data.Purged[[i]]$totalexp
+      cv.lassoPurged = cv.glmnet(x, y, type.measure="mse",alpha = 1, family = "gaussian")
+      fit.lassoPurged = cv.glmnet(x, y, type.measure="mse", alpha = 1, lambda=cv.lassoPurged$lamba.min,family = "gaussian")
+      x.test = model.matrix(totalexp~., test_data.Purged[[i]])[, -1]
+      
+      tpredict = round(predict(fit.lassoPurged, s=fit.lassoPurged$lambda.min, newx=x.test))
+      acc_lassoPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_lassoPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+      r2_lassoPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+    }
+
+plot_lassoPurged = tpredict - test_data.Purged[[i]]$totalexp
+
+lassoPurged.results = data.frame(
+    Name = 'Lasso Purged',
+    RMSE = mean(rmse_lassoPurged),
+    Accuracy = mean(acc_lassoPurged),
+    R2 = mean(r2_lassoPurged)
+  )
+
+
+```
+
+```{r}
+### Elastic Net
+
+acc_elastic = 1:nfold
+rmse_elastic = 1:nfold
+r2_elastic = 1:nfold
+
+  for(i in 1:nfold) {
+      
+      fit.elastic = train(totalexp~., train_data[[i]], method='glmnet', trControl=trainControl('cv', number=10))
+      x.test = model.matrix(totalexp~., test_data[[i]])[, -1]
+      
+      tpredict = predict(fit.elastic, x.test)
+      
+      acc_elastic[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_elastic[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+      r2_elastic[i] = R2(tpredict, test_data[[i]]$totalexp)
+    }
+
+plot_elastic = tpredict - test_data[[i]]$totalexp
+
+elastic.results = data.frame(
+    Name = 'Elastic',
+    RMSE = mean(rmse_elastic),
+    Accuracy = mean(acc_elastic),
+    R2 = mean(r2_elastic)
+  )
+
+```
+
+```{r}
+### Elastic Net Purged Model
+
+acc_elasticPurged = 1:nfold
+rmse_elasticPurged = 1:nfold
+r2_elasticPurged = 1:nfold
+
+  for(i in 1:nfold) {
+      
+      fit.elastic = train(totalexp~., train_data.Purged[[i]], method='glmnet', trControl=trainControl('cv', number=10))
+      x.test = model.matrix(totalexp~., test_data.Purged[[i]])[, -1]
+      
+      tpredict = predict(fit.elastic, x.test)
+      
+      acc_elasticPurged[i] = sum(diag(table(test_data.Purged[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_elasticPurged[i] = sqrt(mean((tpredict - test_data.Purged[[i]]$totalexp)^2))
+      r2_elasticPurged[i] = R2(tpredict, test_data.Purged[[i]]$totalexp)
+    }
+
+plot_elasticPurged = tpredict - test_data.Purged[[i]]$totalexp
+
+elasticPurged.results = data.frame(
+    Name = 'Elastic',
+    RMSE = mean(rmse_elastic),
+    Accuracy = mean(acc_elastic),
+    R2 = mean(r2_elastic)
+  )
+
+```
+
+```{r}
+
+## Plottting Results
+modelResults = list()
+modelResults = rbind(modelResults, full.results)
+modelResults = rbind(modelResults, psig.results)
+modelResults = rbind(modelResults, step.results)
+modelResults = rbind(modelResults, stepPair.results)
+modelResults = rbind(modelResults, ridge.results)
+modelResults = rbind(modelResults, lasso.results)
+modelResults = rbind(modelResults, elastic.results)
+
+
+modelResults
+
+### RMSE
+plot(1:nfold, rmse_full, "l", col="red",
+         xlab="splits", ylab='rmse', 
+         main="Full vs Stepwise vs Step Pair vs Ridge vs Lasso vs Elastic Model",
+         ylim=c(6000, 10000))
+
+plotting_results('rmse', rmse_full, rmse_psig, rmse_step, rmse_stepPair, rmse_ridge, rmse_lasso, rmse_elastic)
+
+
+### Accuracy
+plot(1:nfold, rmse_full, "l", col="red",
+         xlab="splits", ylab='accuracy',
+         main="Full vs Stepwise vs Step Pair vs Ridge vs Lasso vs Elastic Model",
+         ylim=c(0.0, 0.05))
+
+plotting_results('acc', acc_full,  acc_psig, acc_step, acc_stepPair, acc_ridge, acc_lasso, acc_elastic)
+
+### R2
+plot(1:nfold, rmse_full, "l", col="red",
+         xlab="splits", ylab='r2',
+         main="Full vs Stepwise vs Step Pair vs Ridge vs Lasso vs Elastic Model",
+         ylim=c(0.45, 0.70))
+     
+plotting_results('r2', r2_full, r2_psig, r2_step, r2_stepPair, r2_ridge, r2_lasso, r2_elastic)
+
+```
+
+```{r}
+## Plottting Results
+
+modelResults = list()
+modelResults = rbind(modelResults, fullPurged.results)
+modelResults = rbind(modelResults, psigPurged.results)
+modelResults = rbind(modelResults, stepPurged.results)
+modelResults = rbind(modelResults, stepPairPurged.results)
+modelResults = rbind(modelResults, ridgePurged.results)
+modelResults = rbind(modelResults, lassoPurged.results)
+modelResults = rbind(modelResults, elasticPurged.results)
+
+
+modelResults
+
+### RMSE
+plot(1:nfold, rmse_fullPurged, "l", col="red",
+         xlab="splits", ylab='rmse', 
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic",
+         ylim=c(3500, 4500))
+
+plotting_results('rmse', rmse_fullPurged, rmse_psigPurged, rmse_stepPurged, rmse_stepPairPurged, rmse_ridgePurged, rmse_lassoPurged, rmse_elasticPurged)
+
+
+### Accuracy
+plot(1:nfold, acc_fullPurged, "l", col="red",
+         xlab="splits", ylab='accuracy',
+         main="Stepwise  vs Ridge vs Lasso vs Full model",
+         ylim=c(0.0, 0.05))
+
+plotting_results('acc', acc_fullPurged, acc_psigPurged, acc_stepPurged, acc_stepPairPurged, acc_ridgePurged, acc_lassoPurged, acc_elasticPurged)
+
+### R2
+plot(1:nfold, r2_full, "l", col="red",
+         xlab="splits", ylab='r2',
+         main="Stepwise  vs Ridge vs Lasso vs Full model",
+         ylim=c(0.45, 1))
+     
+plotting_results('r2', r2_fullPurged, r2_psigPurged, r2_stepPurged, r2_stepPairPurged, r2_ridgePurged, r2_lassoPurged, r2_elasticPurged)
+```
+
+```{r warnings=FALSE}
+
+### Log transform full model
+
+acc_log = 1:nfold
+rmse_log = 1:nfold
+r2_log = 1:nfold
+
+for(i in 1:nfold) {
+  fit.log = lm(log(totalexp)~., data=train_data[[i]])
+  tpredict = round(predict(fit.log,newdata = test_data[[i]], type='response'))
+  acc_log[i] = sum(diag(table((test_data[[i]]$totalexp),(tpredict)))) / nrow(test_data[[i]])
+  rmse_log[i] = sqrt(mean(((tpredict) - (test_data[[i]]$totalexp))^2))
+  r2_log[i] = R2((tpredict), (test_data[[i]]$totalexp))
+}
+
+
+summary(fit.log)
+model_result(fit.log, train_data[[i]])
+plot_log = tpredict - (test_data[[i]]$totalexp)
+
+log.results = data.frame(
+    Name = 'Log',
+    RMSE = mean(rmse_log),
+    Accuracy = mean(acc_log),
+    R2 = mean(r2_log)
+  )
+
+```
+
+
+```{r}
+###  Remove non-signficant  varaibles with 
+
+acc_log_psig = 1:nfold
+rmse_log_psig = 1:nfold
+r2_log_psig = 1:nfold
+
+for (i in 1:nfold){
+  fit.full = lm(log(totalexp)~., data=train_data[[i]])
+  all_vars = names(fit.full[[1]])[-1]  # names of all X variables
+
+  # Get the non-significant vars
+  summ = summary(fit.full)  # model summary
+  pvals = summ[[4]][, 4]  # get all p values
+  not_significant = character()  # init variables that aren't statsitically significant
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+  # If there are any non-significant variables, 
+  while(length(not_significant) > 0){
+    all_vars = all_vars[!all_vars %in% not_significant[1]]
+    myForm = as.formula(paste("log(totalexp) ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+    fit.log.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  
+    # Get the non-significant vars.
+    summ = summary(fit.psig)
+    pvals = summ[[4]][, 4]
+    not_significant = character()
+    not_significant = names(which(pvals > 0.1))
+    not_significant = not_significant[!not_significant %in% "(Intercept)"]
+  }
+
+
+  fit.log.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  tpredict = round(predict(fit.log.psig, newdata = test_data[[i]], type='response'))
+  acc_log_psig[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+  rmse_log_psig[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+  r2_log_psig[i] = R2(tpredict, (test_data[[i]]$totalexp))
+}
+
+summary(fit.log.psig)
+model_result(fit.log.psig, train_data[[i]])
+plot_log_psig = tpredict - test_data[[i]]$totalexp
+
+log_psig.results = data.frame(
+    Name = 'Significant P-Value LOG',
+    RMSE = mean(rmse_log_psig),
+    Accuracy = mean(acc_log_psig),
+    R2 = mean(r2_log_psig)
+  )
+
+```
+
+```{r}
+### Stepwise Model
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(log(totalexp)~., data=train_data[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_log_step = 1:nfold
+rmse_log_step = 1:nfold
+r2_log_step = 1:nfold
+
+for(i in 1:nfold) {
+    fit.log.step = lm(formulae[[best_model_idx]], data=train_data[[i]])
+    tpredict = round(predict(fit.log.step, newdata = test_data[[i]],type='response'))
+    acc_log_step[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+    rmse_log_step[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+    r2_log_step[i] = R2(tpredict, (test_data[[i]]$totalexp))
+}
+
+
+summary(fit.log.step)
+model_result(fit.log.step, train_data[[i]])
+plot_log_step = tpredict - test_data[[i]]$totalexp
+
+ncvTest(fit.log.step)
+ad.test(residuals(fit.log.step))
+
+log_step.results = data.frame(
+    Name = 'Step LOG',
+    RMSE = mean(rmse_log_step),
+    Accuracy = mean(acc_log_step),
+    R2 = mean(r2_log_step)
+  )
+
+```
+
+
+```{r warning=FALSE}
+### Ridge Model
+
+acc_log_ridge = 1:nfold
+rmse_log_ridge = 1:nfold
+r2_log_ridge = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(log(totalexp)~., train_data[[i]])[, -1]
+      y = log(train_data[[i]]$totalexp)
+      cv.log.ridge = cv.glmnet(x, y, type.measure="mse",alpha = 0, family = "gaussian")
+      fit.log.ridge = cv.glmnet(x, y, type.measure="mse", alpha = 0, lambda=cv.log.ridge$lamba.min,family = "gaussian")
+      x.test = model.matrix(log(totalexp)~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.log.ridge, s=fit.log.ridge$lambda.min, newx=x.test))
+      acc_log_ridge[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+      rmse_log_ridge[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+      r2_log_ridge[i] = R2(tpredict, (test_data[[i]]$totalexp))
+    }
+
+#coef(fit.log.ridge)
+#model_result(fit.ridge, train_data[[i]])
+plot_log_ridge = tpredict - test_data[[i]]$totalexp
+
+log_ridge.results = data.frame(
+    Name = 'Ridge LOG',
+    RMSE = mean(rmse_log_ridge),
+    Accuracy = mean(acc_log_ridge),
+    R2 = mean(r2_log_ridge)
+  )
+
+```
+
+
+```{r warning=FALSE}
+### Lasso Model
+
+acc_log_lasso = 1:nfold
+rmse_log_lasso = 1:nfold
+r2_log_lasso = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(log(totalexp)~., train_data[[i]])[, -1]
+      y = log(train_data[[i]]$totalexp)
+      cv.log.lasso = cv.glmnet(x, y, type.measure="mse",alpha = 1, family = "gaussian")
+      fit.log.lasso = cv.glmnet(x, y, type.measure="mse", alpha = 1, lambda=cv.log.lasso$lamba.min,family = "gaussian")
+      x.test = model.matrix(log(totalexp)~., test_data[[i]])[, -1]
+      
+      tpredict = round(predict(fit.log.lasso, s=fit.log.lasso$lambda.min, newx=x.test))
+      acc_log_lasso[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+      rmse_log_lasso[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+      r2_log_lasso[i] = R2(tpredict, (test_data[[i]]$totalexp))
+    }
+
+#coef(fit.log.lasso)
+#model_result(fit.ridge, train_data[[i]])
+plot_log_lasso = tpredict - test_data[[i]]$totalexp
+
+log_lasso.results = data.frame(
+    Name = 'Lasso LOG',
+    RMSE = mean(rmse_log_lasso),
+    Accuracy = mean(acc_log_lasso),
+    R2 = mean(r2_log_lasso)
+  )
+
+```
+
+```{r}
+### Elastic Net Log Transform Model
+
+acc_log_elastic = 1:nfold
+rmse_log_elastic = 1:nfold
+r2_log_elastic = 1:nfold
+
+  for(i in 1:nfold) {
+      
+      fit.elasticLog = train(log(totalexp)~., train_data[[i]], method='glmnet', trControl=trainControl('cv', number=10))
+      x.test = model.matrix(totalexp~., test_data[[i]])[, -1]
+      
+      tpredict = predict(fit.elasticLog, x.test)
+      
+      acc_log_elastic[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_log_elastic[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+      r2_log_elastic[i] = R2(tpredict, test_data[[i]]$totalexp)
+    }
+
+plot_elasticLog = tpredict - test_data[[i]]$totalexp
+
+log_elastic.results = data.frame(
+    Name = 'Elastic',
+    RMSE = mean(rmse_log_elastic),
+    Accuracy = mean(acc_log_elastic),
+    R2 = mean(r2_log_elastic)
+  )
+
+```
+
+
+```{r warning=FALSE}
+## Plottting Log Transform Model
+
+acc_log_stepPair = 1:nfold
+rmse_log_stepPair = 1:nfold
+r2_log_stepPair = 1:nfold
+
+## Plottting Results
+modelResults = list()
+modelResults = rbind(modelResults, log.results)
+modelResults = rbind(modelResults, log_psig.results)
+modelResults = rbind(modelResults, log_step.results)
+modelResults = rbind(modelResults, log_ridge.results)
+modelResults = rbind(modelResults, log_lasso.results)
+modelResults = rbind(modelResults, log_elastic.results)
+
+modelResults
+
+### RMSE
+plot(1:nfold, rmse_log, "l", col="red",
+         xlab="splits", ylab='rmse', 
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Log Transform",
+         ylim=c(12000, 16000))
+
+plotting_results('rmse', rmse_log, rmse_log_psig, rmse_log_step, rmse_log_stepPair, rmse_log_ridge, rmse_log_lasso, rmse_log_elastic)
+
+
+### Accuracy
+plot(1:nfold, acc_log, "l", col="red",
+         xlab="splits", ylab='accuracy',
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Log Transform",
+         ylim=c(0.0, 0.02))
+plotting_results('acc', acc_log, acc_log_psig, acc_log_step, acc_log_stepPair ,acc_log_ridge, acc_log_lasso, acc_log_elastic)
+
+### R2
+plot(1:nfold, r2_log, "l", col="red",
+         xlab="splits", ylab='r2',
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Log Transform",
+         ylim=c(0.3, 0.6))
+     
+plotting_results('r2', r2_log, r2_log_psig, r2_log_step, r2_log_stepPair ,r2_log_ridge, r2_log_lasso, r2_log_elastic)
+
+```
+
+
+```{r}
+
+### Boc Cox Transform 
+
+acc_bct = 1:nfold
+rmse_bct = 1:nfold
+r2_bct = 1:nfold
+
+for(i in 1:nfold) {
+  fit.bct = lm(totalexp^0.2~., data=train_data[[i]])
+  tpredict = round(predict(fit.bct, newdata = test_data[[i]], type='response'))
+  acc_bct[i] = sum(diag(table(test_data[[i]]$totalexp,tpredict))) / nrow(test_data[[i]])
+  rmse_bct[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  r2_bct[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+summary(fit.bct)
+model_result(fit.bct, train_data[[i]])
+plot_bct = tpredict - test_data[[i]]$totalexp
+
+data.frame(plot_bct)
+
+bct.results = data.frame(
+    Name = 'Box Cox Transform',
+    RMSE = mean(rmse_bct),
+    Accuracy = mean(acc_bct),
+    R2 = mean(r2_bct)
+  )
+
+```
+
+```{r}
+###  Box Cox P-Value Model
+
+acc_bct_psig = 1:nfold
+rmse_bct_psig = 1:nfold
+r2_bct_psig = 1:nfold
+
+for (i in 1:nfold){
+  fit.bct = lm(totalexp^0.2~., data=train_data[[i]])
+  all_vars = names(fit.bct[[1]])[-1]  # names of all X variables
+
+  # Get the non-significant vars
+  summ = summary(fit.bct)  # model summary
+  pvals = summ[[4]][, 4]  # get all p values
+  not_significant = character()  # init variables that aren't statsitically significant
+  not_significant = names(which(pvals > 0.1))
+  not_significant = not_significant[!not_significant %in% "(Intercept)"]  # remove 'intercept'. Optional!
+
+  # If there are any non-significant variables, 
+  while(length(not_significant) > 0){
+    all_vars = all_vars[!all_vars %in% not_significant[1]]
+    myForm = as.formula(paste("(totalexp)^0.2 ~ ", paste (all_vars, collapse=" + "), sep=""))  # new formula
+    fit.bct.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  
+    # Get the non-significant vars.
+    summ = summary(fit.bct.psig)
+    pvals = summ[[4]][, 4]
+    not_significant = character()
+    not_significant = names(which(pvals > 0.1))
+    not_significant = not_significant[!not_significant %in% "(Intercept)"]
+  }
+
+
+  fit.bct.psig = lm(myForm, data=train_data[[i]])  # re-build model with new formula
+  tpredict = round(predict(fit.bct.psig, newdata = test_data[[i]], type='response'))
+  acc_bct_psig[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+  rmse_bct_psig[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  r2_bct_psig[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+summary(fit.bct.psig)
+model_result(fit.bct.psig, train_data[[i]])
+plot_bct_psig = tpredict - test_data[[i]]$totalexp
+
+bct.psig.results = data.frame(
+    Name = 'Significat P-Value BCT',
+    RMSE = mean(rmse_bct_psig),
+    Accuracy = mean(acc_bct_psig),
+    R2 = mean(r2_bct_psig)
+  )
+
+```
+
+```{r}
+### Box Cox Stepwise Model
+
+formulae_all = list()
+
+for(i in 1:nfold) {
+    formulae_all[[i]] = formula(step(lm(totalexp^0.2~., data=train_data[[i]]),trace=F))
+}
+
+formulae = unique(formulae_all)
+print(formulae)
+
+
+acc = rep(0, length(formulae))
+rmse = rep(0, length(formulae))
+
+for(i in 1:nfold) {
+  for(model_i in 1:length(formulae)) {
+    fit.candidate = lm(formulae[[model_i]], data=train_data[[i]])
+    tpredict = round(predict(fit.candidate, newdata = test_data[[i]], type='response'))
+    acc[model_i] = acc[model_i] + sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+    rmse[model_i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+  }
+}
+
+best_model_idx = which.max(acc)
+cat('Best model formula : ')
+formulae[best_model_idx]
+        
+acc_bct_step = 1:nfold
+rmse_bct_step = 1:nfold
+r2_bct_step = 1:nfold
+
+for(i in 1:nfold) {
+    fit.bct.step = lm(formulae[[best_model_idx]], data=train_data[[i]])
+    tpredict = round(predict(fit.bct.step, newdata = test_data[[i]],type='response'))
+    acc_bct_step[i] = sum(diag(table(test_data[[i]]$totalexp,tpredict))) / nrow(test_data[[i]])
+    rmse_bct_step[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+    r2_bct_step[i] = R2(tpredict, test_data[[i]]$totalexp)
+}
+
+
+summary(fit.bct.step)
+model_result(fit.bct.step, train_data[[i]])
+plot_bct_step = tpredict - test_data[[i]]$totalexp
+
+ncvTest(fit.bct.step)
+ad.test(residuals(fit.bct.step))
+
+bct.step.results = data.frame(
+    Name = 'Step BCT',
+    RMSE = mean(rmse_bct_step),
+    Accuracy = mean(acc_bct_step),
+    R2 = mean(r2_bct_step)
+  )
+
+```
+
+```{r}
+### Box Cox Transform Ridge Model
+
+acc_bct_ridge = 1:nfold
+rmse_bct_ridge = 1:nfold
+r2_bct_ridge = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(lm(totalexp^0.2~., data=train_data[[i]]))[, -1]
+      y = (train_data[[i]]$totalexp)^0.2
+      cv.bct.ridge = cv.glmnet(x, y, type.measure="mse",alpha = 0, family = "gaussian")
+      fit.bct.ridge = cv.glmnet(x, y, type.measure="mse", alpha = 0, lambda=cv.bct.ridge$lamba.min,family = "gaussian")
+      x.test = model.matrix(lm(totalexp^0.2~., data=test_data[[i]]))[, -1]
+      
+      tpredict = round(predict(fit.bct.ridge, s=fit.bct.ridge$lambda.min, newx=x.test))
+      acc_bct_ridge[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+      rmse_bct_ridge[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+      r2_bct_ridge[i] = R2(tpredict, (test_data[[i]]$totalexp))
+    }
+
+#coef(fit.log.ridge)
+#model_result(fit.ridge, train_data[[i]])
+plot_bct_ridge = tpredict - test_data[[i]]$totalexp
+
+bct.ridge.results = data.frame(
+    Name = 'Ridge BCT',
+    RMSE = mean(rmse_bct_ridge),
+    Accuracy = mean(acc_bct_ridge),
+    R2 = mean(r2_bct_ridge)
+  )
+
+```
+
+```{r}
+### BCT Lasso
+
+acc_bct_lasso = 1:nfold
+rmse_bct_lasso = 1:nfold
+r2_bct_lasso = 1:nfold
+
+  for(i in 1:nfold) {
+      x = model.matrix(lm(totalexp^0.2~., data=train_data[[i]]))[, -1]
+      y = (train_data[[i]]$totalexp)^0.2
+      cv.bct.lasso = cv.glmnet(x, y, type.measure="mse",alpha = 1, family = "gaussian")
+      fit.bct.lasso = cv.glmnet(x, y, type.measure="mse", alpha = 1, lambda=cv.bct.lasso$lamba.min,family = "gaussian")
+      x.test = model.matrix(lm(totalexp^0.2~., data=test_data[[i]]))[, -1]
+      
+      tpredict = round(predict(fit.bct.lasso, s=fit.bct.lasso$lambda.min, newx=x.test))
+      acc_bct_lasso[i] = sum(diag(table((test_data[[i]]$totalexp),tpredict))) / nrow(test_data[[i]])
+      rmse_bct_lasso[i] = sqrt(mean((tpredict - (test_data[[i]]$totalexp))^2))
+      r2_bct_lasso[i] = R2(tpredict, (test_data[[i]]$totalexp))
+    }
+
+#coef(fit.log.ridge)
+#model_result(fit.ridge, train_data[[i]])
+plot_bct_lasso = tpredict - test_data[[i]]$totalexp
+
+bct.lasso.results = data.frame(
+    Name = 'Lasso BCT',
+    RMSE = mean(rmse_bct_lasso),
+    Accuracy = mean(acc_bct_lasso),
+    R2 = mean(r2_bct_lasso)
+  )
+```
+
+```{r}
+### Elastic Net BCT Transform Model
+
+acc_bct_elastic = 1:nfold
+rmse_bct_elastic = 1:nfold
+r2_bct_elastic = 1:nfold
+
+  for(i in 1:nfold) {
+      
+      fit.elasticBct = train(totalexp^0.2~., train_data[[i]], method='glmnet', trControl=trainControl('cv', number=10))
+      x.test = model.matrix(totalexp~., test_data[[i]])[, -1]
+      
+      tpredict = predict(fit.elasticBct, x.test)
+      
+      acc_bct_elastic[i] = sum(diag(table(test_data[[i]]$totalexp, tpredict))) / nrow(test_data[[i]])
+      rmse_bct_elastic[i] = sqrt(mean((tpredict - test_data[[i]]$totalexp)^2))
+      r2_bct_elastic[i] = R2(tpredict, test_data[[i]]$totalexp)
+    }
+
+plot_elasticBct = tpredict - test_data[[i]]$totalexp
+
+bct.elastic.results = data.frame(
+    Name = 'Elastic',
+    RMSE = mean(rmse_bct_elastic),
+    Accuracy = mean(acc_bct_elastic),
+    R2 = mean(r2_bct_elastic)
+  )
+
+```
+
+```{r}
+## Plotting BC Transform Model
+
+acc_bct_stepPair = 1:nfold
+rmse_bct_stepPair = 1:nfold
+r2_bct_stepPair = 1:nfold
+
+## Plottting Results
+modelResults = list()
+modelResults = rbind(modelResults, bct.results)
+modelResults = rbind(modelResults, bct.psig.results)
+modelResults = rbind(modelResults, bct.step.results)
+modelResults = rbind(modelResults, bct.ridge.results)
+modelResults = rbind(modelResults, bct.lasso.results)
+modelResults = rbind(modelResults, bct.elastic.results)
+
+modelResults
+
+### RMSE
+plot(1:nfold, rmse_bct, "l", col="red",
+         xlab="splits", ylab='rmse', 
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Box Cox Transform",
+         ylim=c(12000, 16000))
+
+plotting_results('rmse', rmse_bct, rmse_bct_psig, rmse_bct_step, rmse_bct_stepPair, rmse_bct_ridge, rmse_bct_lasso, rmse_bct_elastic)
+
+
+### Accuracy
+plot(1:nfold, acc_bct, "l", col="red",
+         xlab="splits", ylab='accuracy',
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Box Cox Transform",
+         ylim=c(0.0, 0.02))
+
+plotting_results('acc', acc_bct, acc_bct_psig, acc_bct_step, acc_bct_stepPair, acc_bct_ridge, acc_bct_lasso, acc_bct_elastic)
+
+### R2
+plot(1:nfold, r2_bct, "l", col="red",
+         xlab="splits", ylab='r2',
+         main="Full vs Stepwise  vs Ridge vs Lasso vs Elastic Box Cox Transform",
+         ylim=c(0.3, 0.6))
+     
+plotting_results('r2', r2_bct, r2_bct_psig, r2_bct_step, r2_bct_stepPair, r2_bct_ridge, r2_bct_lasso, r2_bct_elastic)
+```
+
+```{r}
+#### Plot "The difference between predict and real values" ####
+###                        "Initial" = plot_full,
+
+data_plot <- data.frame("Initial" = plot_full,
+                        "Log Transform" = plot_log,
+                        "Box Cox Transform" = plot_bct)
+
+
+data_plot$Id <- row.names(data_plot)
+
+
+data_plot <- gather(data_plot, method, value, - Id)
+
+data_plot$method <- as.factor(data_plot$method)
+
+
+data.frame(data_plot)
+
+levels(data_plot$method) <- c( 
+                              paste0("Initial"),
+                              paste0("Log Transform"),
+                              paste0("Box Cox Transform"))
+
+
+ggplot(data_plot, aes(x = Id, y = value, colour = method))+
+    geom_point(alpha = 0.7, size = 2) +
+    ggtitle("The difference between predict and real expenses")+
+    labs(x = "Row Id", y = "The difference between expenses", colour = " ")+
+    scale_x_discrete(breaks = c(0))+
+    theme(legend.position = "top",
+          legend.text = element_text(size = 10),
+          axis.text.x = element_blank(), 
+          axis.title.x = element_text(size = 8),
+          axis.text.y = element_text(size = 8), 
+          axis.title.y = element_text(size = 8),
+          title = element_text(size = 14))
+
+```
+
+```{r}
+#### Plot "The difference between predict and real values" ####
+###                        "Initial" = plot_full,
+
+data_plot <- data.frame("Initial" = plot_full,
+                        "Ridge" = plot_ridge,
+                        "Lasso" = plot_lasso,
+                        "Elastic Net" = plot_elastic)
+
+
+data_plot$Id <- row.names(data_plot)
+
+
+data_plot <- gather(data_plot, method, value, - Id)
+
+data_plot$method <- as.factor(data_plot$method)
+
+
+data.frame(data_plot)
+
+levels(data_plot$method) <- c( 
+                              paste0("Initial"),
+                              paste0("Ridge"),
+                              paste0("Lasso"),
+                              paste0("Elastic Net"))
+
+
+ggplot(data_plot, aes(x = Id, y = value, colour = method))+
+    geom_point(alpha = 0.7, size = 2) +
+    ggtitle("The difference between predict and real expenses")+
+    labs(x = "Row Id", y = "The difference between expenses", colour = " ")+
+    scale_x_discrete(breaks = c(0))+
+    theme(legend.position = "top",
+          legend.text = element_text(size = 10),
+          axis.text.x = element_blank(), 
+          axis.title.x = element_text(size = 8),
+          axis.text.y = element_text(size = 8), 
+          axis.title.y = element_text(size = 8),
+          title = element_text(size = 14))
+
+```
+
+
+

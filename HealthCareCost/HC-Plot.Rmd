@@ -1,0 +1,114 @@
+---
+title: "HC - Functions to plot graphs and reults"
+output: 
+  pdf_document: default
+---
+
+
+```{r}
+
+# Function to print all graphs and predictiion results for the model
+# Inputs to the model, the data and the name of the model
+# Output is a data frame with RMSE, R2, MAE values for each model
+
+model_result = function(model,train){
+  
+  formulae = summary(model)['call']
+  regForm = substr(formulae,13,str_length(formulae)-1)
+  
+  sample_size = nrow(train)
+  num_variable = ncol(train)
+  
+  resd = residuals(model)
+  fits = fitted(model)
+  sresd = rstudent(model)
+  stdresd = rstandard(model)
+  
+  par(mfrow = c(2, 2))
+  
+  # Outliers
+  outlierTest(model) # Bonferonni p-value for most extreme obs
+  qqPlot(model, main="QQ Plot") #qq plot for studentized resid
+  
+   
+  # Plot the histogram of the residuals
+  
+  hist(stdresd,
+    main="Histogram of Standardized Residuals",
+    xlab="Standarized Residuals",
+    col="blue",
+    freq=TRUE)
+  line(stdresd)
+  
+  #Plot Predicated values vd Studentized Residuals
+  influencePlot(model,main='Influence Plot')
+  
+  #Influential Observations
+  #Plot Cook's Distance
+  plot(model, which = 4) +
+    abline(h = 4/(sample_size - num_variable-1), col="red")
+  
+ 
+  par(mfrow = c(2, 2))
+  plot(model, which = 1) # Fitted vs Residuals
+  plot(fits,sresd)
+  plot(model, which = 3)
+  plot(model, which = 5)
+  
+  par(mfrow = c(2, 2))
+  plot(train$totalexp, fits)
+  plot(train$totalexp, resd)
+  
+  #Anderson-Darling Test For Normality
+ adResult = ad.test(resd)
+ adPvalue = adResult['p.value']
+
+}
+
+```
+
+
+```{r}
+
+## Plotting Full Model
+
+
+plotting_results = function(measure, full, psig, step, steppair, ridge, lasso,  elastic){
+ 
+# Full model
+  points(1:nfold, full, col="red")
+
+# Significant P-value model
+  lines(1:nfold, psig, col="yellow", lty=5)
+  points(1:nfold, psig, col="yellow")  
+  
+# Step model
+  lines(1:nfold, step, col="blue", lty=2)
+  points(1:nfold, step, col="blue")
+  
+# Step Pair model
+  lines(1:nfold, steppair, col="purple", lty=6)
+  points(1:nfold, steppair, col="purple")
+  
+# Ridge model
+  lines(1:nfold, ridge, col="green", lty=4)
+  points(1:nfold, ridge, col="green")
+  
+# Lasso model
+  lines(1:nfold, lasso, col="black", lty=3)
+  points(1:nfold, lasso, col="black")
+
+# Elastic model
+  lines(1:nfold, elastic, col="purple", lty=7)
+  points(1:nfold, elastic, col="purple")
+  
+  
+    
+  legend('topright', legend=c('Full model', 'Significant P-value model', 'Step model', 'Lasso model', 'Ridge model', 'Elastic model'), 
+           col=c('red', 'yellow', 'blue', 'black', 'green', 'purple'), lty=c(1, 2, 3, 4, 5, 7), pch=10, cex=0.6)
+  
+ 
+} 
+
+
+```

@@ -1,0 +1,40 @@
+---
+title: "HC - Inital Model"
+output: 
+  pdf_document: default
+---
+
+
+```{r}
+
+getwd()
+
+```
+
+
+```{r}
+
+source('C:/Bandhin/Git/Health-Care-Cost-for-Elderly/HC-DataPrep.R')
+source('C:/Bandhin/Git/Health-Care-Cost-for-Elderly/HC-PlotFunctions.R')
+
+```
+
+
+```{r}
+
+# Simple regression model
+
+initialModel = lm((totalexp)~., data=medicalData)
+summary(initialModel)
+
+ncvTest(initialModel)
+ad.test(residuals(initialModel))
+
+data.frame(vif(initialModel))
+
+model_result(initialModel,medicalData)
+
+```
+
+
+l
