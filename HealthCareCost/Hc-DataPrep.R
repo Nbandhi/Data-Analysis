@@ -1,0 +1,127 @@
+require(corrplot)
+
+require(ggplot2)    ## declaratively creating graphics - https://ggplot2.tidyverse.org/ 
+
+require(gridExtra)          ## arrange visualizations using grid 
+
+
+
+#Load the data and initialize necessary variables
+
+medicalData = read.csv("http://www.datadescant.com/stat109/hospvisits.csv")
+
+head(medicalData)
+
+response_df = medicalData['totalexp']  # Y variable
+predictors_df = medicalData[, !names(medicalData) %in% "totalexp" ]  # X variables
+
+# Data frame to store the results of the various models
+modelResults = setNames(data.frame(matrix(ncol = 7, nrow = 0)), c("Name", "Model", "RMSE", "R2", "MAE", "ACC")) 
+
+summary(medicalData)
+
+# Create train & test data set
+
+set.seed(123)
+sample = sample.int(n = nrow(medicalData), 
+                    size = floor(.80*nrow(medicalData)), replace = F)
+medicalData.Train = medicalData[sample,]
+medicalData.Test = medicalData[-sample,]
+
+
+# Data exploration
+
+numericVars = which(sapply(medicalData, is.numeric)) #index vector numeric variables
+numericVarNames = names(numericVars) #saving names vector for use later on
+##cat('There are', length(numericVars), 'numeric variables')
+
+par(mfrow = c(2, 2))
+
+hist(medicalData$totalexp,
+     main="Total Helath Care Expenses",
+     xlab="Expenses in Dollars",
+     xlim=c(0,150000),
+     col="blue",
+     freq=TRUE
+)
+
+hist(log(medicalData$totalexp),
+     main="Log of Total Helath Care Expenses",
+     xlab="Log of Expenses in Dollars",
+     col="blue",
+     freq=TRUE
+)
+
+qqnorm(medicalData$totalexp, main = "Total Expense Q-Q Plot", xlab = "Theoretical Quantiles", 
+       ylab = "Sample Quantiles", plot.it = TRUE, datax = FALSE)
+qqline(medicalData$totalexp, datax = FALSE, distribution = qnorm, 
+       probs = c(0.25, 0.75), qtype = 7)
+
+
+qqnorm(log(medicalData$totalexp), main = "Log Total Expense Q-Q Plot", xlab = "Theoretical Quantiles", 
+       ylab = "Sample Quantiles", plot.it = TRUE, datax = FALSE)
+qqline(log(medicalData$totalexp), datax = FALSE, distribution = qnorm, 
+       probs = c(0.25, 0.75), qtype = 7)
+
+# Check for correlation among the variables
+
+cor_numVar = cor(medicalData, use="pairwise.complete.obs") #correlations of all numeric variables
+cor_sorted = as.matrix(sort(cor_numVar[,'totalexp'], decreasing = TRUE))
+
+#select only high corelations
+CorHigh = names(which(apply(cor_sorted, 1, function(x) abs(x)>0.1)))
+cor_numVar = cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos = "lt")
+
+corrplot(cor_numVar, title = "",
+         
+         type = "lower", 
+         
+         order = "hclust", 
+         
+         hclust.method = "centroid",
+         
+         tl.cex = 0.8,
+         
+         tl.col = "black", 
+         
+         tl.srt = 45)
+
+
+# More data exploration
+
+# Race Group
+p1 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(race_grp), y=totalexp))+
+  geom_boxplot(col='blue') + labs(x='Race Group',y='Total Expanse') +
+  scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Health Status
+p2 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(srhealth), y=totalexp))+
+  geom_boxplot(col='blue') + labs(x='Health Status',y='Total Expanse') +
+  scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Marital Status
+p3 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(marital), y=totalexp))+
+  geom_boxplot(col='blue') + labs(x='Marital Status',y='Total Expanse') +
+  scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Mental Health
+p4 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(mntl_hlth), y=totalexp))+
+  geom_boxplot(col='blue') + labs(x='Mental Health',y='Total Expanse') +
+  scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+# Doctor Visits
+p5 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=dr_visits, y=totalexp)) +
+  geom_point(col='blue') +
+  geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  labs(x='Doctor Visits',y='Total Expanse')
+
+# Education
+p6 = ggplot(data=medicalData[!is.na(medicalData$totalexp),], aes(x=factor(educ), y=totalexp))+
+  geom_boxplot(col='blue') + labs(x='Education',y='Total Expanse') +
+  scale_y_continuous(breaks= seq(0, 200000, by=10000))
+
+grid.arrange(p1,p2,p3,p4,nrow = 2)
+grid.arrange(p5,p6,nrow = 1)
+
