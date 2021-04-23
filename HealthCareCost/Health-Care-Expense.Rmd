@@ -12,7 +12,7 @@ output:
 
 ```{r  warning=FALSE}
 
-# All required libraries
+# All required libraries 
 
 require(tidyr)      ##  Data wrangling - https://rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf
 
