@@ -1,0 +1,14 @@
+{% extends "base-layout.html" %}
+{% block title %} Restaurant - Where to Open Your Next One {% endblock %}
+{% block head %} {{ super() }} {% endblock %}
+{% block container %}
+<div class="row bs-callout">
+     <div class="row">
+        <div class="col-md-12">  
+            <h2 class="text-center">ERROR</h2>
+            <p> {{ errors }} for<br> <strong>{{ type }} for {{ city }}</strong></p>
+            <p>{{ file }}</p>
+        </div> 
+    </div>
+</div>
+{% endblock %}

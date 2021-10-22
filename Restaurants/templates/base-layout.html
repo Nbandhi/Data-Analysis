@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% endblock %}</title>
+
+      
+    <!-- mobile settings -->
+    <meta name="viewport" content="width=device-width, maximum-scale=1, initial-scale=1, user-scalable=0" />
+    
+   <!-- WEB FONTS -->
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700,800" rel="stylesheet" type="text/css" />
+    
+    <!-- CORE CSS  -->
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/all.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/essentials.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/layout.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/layout-responsive.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/orange.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/bnr.css') }}" rel="stylesheet">
+   
+  </head>
+  <body>
+      	<!-- Top Bar -->
+		<header id="topHead" class="color fixed">
+			<div class="container">
+
+				<!-- PHONE/EMAIL -->
+				<span class="quick-contact pull-left">
+                    <i class="fas fa-user"></i>&nbsp;Narayana R. Bandhi
+					<i class="fas fa-envelope"></i> 
+					<a class="hidden-xs" href="mailto:nbandhi@gmail.com">&nbsp;nbandhi@gmail.com</a>
+				</span>
+				<!-- /PHONE/EMAIL -->
+                
+                <!-- SOCIAL MEIDA LINKS -->
+                <div class="pull-right socials">
+                    <a href="https://www.linkedin.com/in/narayana-bandhi-9890b91/"><i class="fab.fa-pull-left social fab fa-linkedin"></i></a> 
+                    
+				</div>
+                <!-- /SOCIAL MEDIAL LINKS -->
+			</div>
+		</header>
+		<!-- /Top Bar -->
+        <!-- TOP NAV -->
+		<header id="topNav" class="topHead"><!-- remove class="topHead" if no topHead used! -->
+			<div class="container">
+                <!-- Mobile Menu Button -->
+				<div class="navbar-header">            
+                <!-- Brand and toggle get grouped for better mobile display -->
+                        
+                    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                        <span class="sr-only">Toggle navigation</span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </button>
+                    <!-- navbar-brand is hidden on larger screens, but visible when the menu is collapsed--> 
+                    
+                </div>
+
+				<!-- Top Nav -->
+				<div class="collapse navbar-collapse nav-main-collapse collapse pull-right" id="bs-example-navbar-collapse-1">
+                    <nav class="nav-main  mega-menu">
+                        <ul class="nav nav-pills nav-main scroll-menu" id="topMenu">
+                            <li>
+                                <a href="{{ url_for('home') }}">Home</a>
+                            </li>
+                            <li class='dropdown'>
+                                <a class="dropdown-toggle" href="#">
+									Projects 
+								</a>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <a href="{{ url_for('restaurant_home' ) }}">Restaurant</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url_for('comingsoon') }}">Six Degress</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url_for('comingsoon') }}">Art</a>
+                                    </li>
+                                </ul>
+                            </li>
+				        </ul>
+                    </nav>
+                </div>
+			</div>
+		</header>
+        <!-- /Top Nav -->
+        <span id="header_shadow"></span>
+    
+    
+      <div id="wrapper">
+         <section class=" fullwidthbanner-container">
+            {% block container %}{% endblock %}
+         </section>
+      </div>
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+     
+    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jquery-2.1.4.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/all.js') }}"></script>
+      
+    
+    
+  </body>
+</html>

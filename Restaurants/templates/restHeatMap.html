@@ -1,0 +1,67 @@
+{% extends "base-layout.html" %}
+{% block title %} Restaurant - Where to Open Your Next One {% endblock %}
+{% block head %} {{ super() }} {% endblock %}
+{% block container %}
+<section class="container">
+<div class="row bs-callout">
+     <div class="row">
+        <div class="col-md-12">  
+            <h2 class="text-center">Heat Map of {{ type }}<br><strong> {{ city }} 
+            {% if neighbour is defined %}
+                <br> {{ neighbourhood }}
+            {% endif %}
+            </strong></h2>
+        </div> 
+    </div>
+    <div class="row bs-callout">
+        <div class="col-md-12">
+            <div class="embed-responsive embed-responsive-16by9">
+                <iframe class="embed-responsive-item" src="{{ url_for('static', filename=restHeatMap) }}" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="row">
+            <div class="col-md-1 style="background-color:white""></div>
+            <div class="col-md-10" style="background-color:white">
+            <h2 class='h2 text-center'>{{ type }}Analysis</h2>
+            {{ restaurant_table|safe }}
+            </div>
+            <div class="col-md-1" style="background-color:white"></div>
+        </div>
+        <div class ="row">
+            <p></p>
+        </div>
+        <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8 text-center" >
+                <!-- {% if neighbour is not defined %} -->
+                 <form id="neighbourForm" method='POST' action='/explore_neighbourhood' style="border: 1px solid #333333;padding:20px; margin-bottom:20px;" enctype="multipart/form-data"> 
+                        <input type="hidden" name="city" value={{ city }}>
+                        <input type="hidden" name="typeRest" value={{ type }}>
+
+                       <div class="row">
+                            <div class="form-group">
+                                <div class="col-md-12">
+                                    <select name="neighbourhood" class="form-control" id="type-box" onchange="myFunction()"><OPTION>Select Neighbourhood</OPTION>
+                                    {% for r in neighList %}
+                                       <OPTION value={{r.replace(" ","%20")}}>{{r}}</OPTION>
+                                    {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                     {% if neighbour is not defined %}
+                       <button type="submit" class="button">Step 2: Explore Neighbourhood</button>
+                     {% else %}
+                        <button type="submit" class="button">Step 2: Explore Another Neighbourhood</button>
+                    {% endif %}
+                    </form>
+                <!-- {% endif %} -->
+            </div>
+            <div class="col-md-2" ></div>
+        </div>
+    </div>
+    </section>
+
+{% endblock %}

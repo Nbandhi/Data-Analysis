@@ -1,0 +1,103 @@
+{% extends "base-layout.html" %}
+{% block title %} Home {% endblock %}
+{% block head %} {{ super() }} {% endblock %}
+{% block container %}
+
+<section class="container">
+    <div class="row">
+        <h2 class="text-center text-bold text-b">Try to find an optimal location for a restaurant<br></h2>
+        <p class="text-basic text-b">
+            <b>Step One</b> is to detect candidate areas that are not already crowded with restaurants.  For this we will explore an area of approimately 3.5 miles from the center of the city. Visualize the data in a heat map for the restaurant type selected.
+            
+        </p>
+    </div>
+    
+<div class="row">
+    <div style="background-color: rgba(0, 0, 0, 0.04); background-image: none; margin-left: 0px;" class=" news-box" id="w1613">
+        <div style="padding: 0px;" class="restaurant-flip-card" id="w1614">
+                <div class=" flip-card-front" id="w1616">
+                    <img id="w1617" style="height: 270px;" alt="123" src="{{ url_for('static', filename='images/nyc.jpeg') }}" class=" img-responsive" width="394" height="270">
+                    <div class=" div-report" id="w1618"><p class=" news-box-date" id="w1619">NEW YOR CITY</p>
+                    <form id="restaurantForm" method='POST' action='/explore_neighbourhood' style="border: 1px solid #333333;padding:20px; margin-bottom:20px;" enctype="multipart/form-data"> 
+                        <input type="hidden" name="city" value="NewYorkCity">
+                       <div class="row">
+                            <div class="form-group">
+                                <div class="col-md-12">
+                                    <label><strong>Choose Restaurant Type<sup>*</sup></strong></label>
+                                    <select name="typeRest" class="form-control" id="type-box" onchange="myFunction()"><OPTION>Select a Restaurant Type</OPTION>
+                                    {% for r in typeList %}
+                                       <OPTION value={{r.replace(" ","%20")}}>{{r}}</OPTION>
+                                    {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                       <button type="submit" class="button">Step 1: Explore Target Area</button>
+                    </form>
+                    
+                    </div>
+                </div>
+            </div>
+        </div>
+    <div style="background-color: rgba(0, 0, 0, 0.04); background-image: none;" class=" news-box" id="w1674">
+        <div style="padding: 0px;" class="restaurant-flip-card" id="w1675">
+                <div class=" flip-card-front" id="w1677">
+                    <img id="w1678" style="height: 270px;" alt="Leadership Quality" src="{{ url_for('static', filename='images/losangeles.jpeg') }}" class=" img-responsive" width="394" height="270">
+                    <div class=" div-report" id="w1679"><p class=" news-box-date" id="w1680">LOS ANGELES</p>
+                        <form id="neighbourForm" method='POST' action='/explore_neighbourhood' style="border: 1px solid #333333;padding:20px; margin-bottom:20px;" enctype="multipart/form-data"> 
+                        <input type="hidden" name="city" value="LosAngeles">
+                       <div class="row">
+                            <div class="form-group">
+                                <div class="col-md-12">
+                                    <label><strong>Choose Restaurant Type<sup>*</sup></strong></label>
+                                    <select name="typeRest" class="form-control" id="type-box" onchange="myFunction()"><OPTION>Select a Restaurant Type</OPTION>
+                                    {% for r in typeList %}
+                                       <OPTION value={{r.replace(" ","%20")}}>{{r}}</OPTION>
+                                    {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                       <button type="submit" class="button">Step 1: Explore Target Area</button>
+                    </form>
+                    </div>
+                </div>
+            </div>
+    </div>
+    <div style="background-color: rgba(0, 0, 0, 0.04); background-image: none;" class=" news-box" id="w1674">
+        <div style="padding: 0px;" class="restaurant-flip-card" id="w1675">
+            <div class=" flip-card-inner" id="w1676">
+                <div class=" flip-card-front" id="w1677">
+                    <img id="w1678" style="height: 270px;" alt="Leadership Quality" src="{{ url_for('static', filename='images/chicago.jpeg') }}" class=" img-responsive" width="394" height="270">
+                    <div class=" div-report" id="w1679"><p class=" news-box-date" id="w1680">CHICAGO</p>
+                        <form id="neighbourForm" method='POST' action='/explore_neighbourhood' style="border: 1px solid #333333;padding:20px; margin-bottom:20px;" enctype="multipart/form-data"> 
+                        <input type="hidden" name="city" value="Chicago">
+                       <div class="row">
+                            <div class="form-group">
+                                <div class="col-md-12">
+                                    <label><strong>Choose Restaurant Type<sup>*</sup></strong></label>
+                                    <select name="typeRest" class="form-control" id="type-box" onchange="myFunction()"><OPTION>Select a Restaurant Type</OPTION>
+                                    {% for r in typeList %}
+                                       <OPTION value={{r.replace(" ","%20")}}>{{r}}</OPTION>
+                                    {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                       <button type="submit" class="button">Step 1: Explore Target Area</button>
+                    </form>
+                    </div>
+                </div>
+                <div class=" flip-card-back" id="w1681">
+                     <img id="w1678" style="height: 270px;" alt="Leadership Quality" src="{{ url_for('static', filename='images/comingsoon.jpeg') }}" class=" img-responsive" width="394" height="270">
+                </div>
+            </div>
+        </div>
+     </div>
+</div>
+ 
+
+</section>
+    
+    
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base-layout.html" %}
+{% block title %} Restaurant - Where to Open Your Next One {% endblock %}
+{% block head %} {{ super() }} {% endblock %}
+{% block container %}
+<section class="container">
+<div class="row bs-callout">
+     <div class="row">
+        <div class="col-md-12">  
+            <h2 class="text-center"> {{ type }} of <br><strong> {{ city }}
+            {% if neighbour is defined %}
+                <br> {{ neighbourhood }}
+            {% endif %}
+            </strong></h2>
+        </div> 
+    </div>
+    <div class="row bs-callout">
+        <div class="col-md-12">
+            <div class="embed-responsive embed-responsive-16by9">
+                <iframe class="embed-responsive-item" src="{{ url_for('static', filename=restMap) }}" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="row">
+            <div class="col-md-1 style="background-color:white""></div>
+            <div class="col-md-10" style="background-color:white">
+            <h2 class='h2 text-center'>10 Restaurant addresses</h2>
+            {{ restaurant_table|safe }}
+            </div>
+            <div class="col-md-1" style="background-color:white"></div>
+        </div>
+        <div class="row">
+            <div class="col-md-1 style="background-color:white""></div>
+            <div class="col-md-10" style="background-color:white">
+            <h2 class='h2 text-center'>10 {{ type }} addresses</h2>
+            {{ type_restaurant_table|safe }}
+            </div>
+            <div class="col-md-1" style="background-color:white"></div>
+        </div>
+        <div class="row">
+            <div class="col-md-1 style="background-color:white""></div>
+            <div class="col-md-10" style="background-color:white">
+            <h2 class='h2 text-center'>10 Restaurant addresses around candidate areas</h2>
+            {{ area_restaurant_table|safe }}
+            </div>
+            <div class="col-md-1" style="background-color:white"></div>
+        </div>
+ 
+        <div class="row">
+            <div class="col-md-2"></div>
+            <div class="col-md-8 text-center" >
+            <a href="{{ url_for('restheatmap')}}">
+                <button type="submit" class="button">Step 1: Visualize Heatmap</button></a>
+            </div>
+            <div class="col-md-2" ></div>
+        </div>
+    </div>
+    </section>
+
+{% endblock %}

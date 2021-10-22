@@ -1,0 +1,40 @@
+{% extends "base-layout.html" %}
+{% block title %} Restaurant - Where to Open Your Next One {% endblock %}
+{% block head %} {{ super() }} {% endblock %}
+{% block container %}
+<section class="container">
+<div class="row bs-callout">
+     <div class="row">
+        <div class="col-md-12">  
+            <h2 class="text-center">We will explore {{ totalNeighs }} Candidate areas, equaly spaced, within {{ distance}} mile radius from center of <br><br><strong> {{ city }} - {{ neighbourhood }}</strong><br>to build your next<br><strong>{{ type }}</strong></h2>
+        </div>  
+    </div>
+    <div class="row bs-callout">
+        <div class="col-md-12">
+            <div class="embed-responsive embed-responsive-16by9">
+                <iframe class="embed-responsive-item" src="{{ url_for('static', filename=neighMap) }}" allowfullscreen></iframe>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 text-center">Click on the blue dot to see more infomation of the candidate area</div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-1" style="background-color:white"></div>
+        <div class="col-md-10 text-center" style="background-color:white">
+        <h2 class='h2'>10 candidate addresses of a total {{ totalNeighs }} candidates</h2>
+        {{ location_table|safe }}
+        </div>
+        <div class="col-md-1" style="background-color:white"></div>
+    </div>
+    <div class="row">
+        <div class="col-md-2"></div>
+        <div class="col-md-8 text-center">
+            <a href="{{ url_for('restaddresses') }}">
+               <button type="submit" class="button">Get Restaurants in the Candidate Areas</button></a>
+        </div>
+        <div class="col-md-2"></div>
+    </div>
+</div></section>
+
+{% endblock %}
