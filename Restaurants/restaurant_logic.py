@@ -12,7 +12,7 @@ import json
 
 import restaurant_utility as util
 
-google_api_key = 'AIzaSyBebP5DX1XnB1bM2nKf59nmdMTdL6qY4eM'
+google_api_key = ''
 gmaps = GoogleMaps(google_api_key)
 
 def get_string():
