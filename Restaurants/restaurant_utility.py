@@ -8,12 +8,13 @@ from pyproj import Transformer
 import requests
 from requests.exceptions import HTTPError
 import pandas as pd
-
-
+from requests.exceptions import HTTPError
+import multiprocessing
+from multiprocessing import Pool
 
 # ID and KEY for Four Square API
-foursquare_client_id = ''
-foursquare_client_secret = ''
+foursquare_client_id = 'WLG2AFJIJUUYJXUWRRCBF4MXWNGUXAD3BTRR1VALEFPXM15M'
+foursquare_client_secret = '14ICLYSBIB3RGLNQOQLFOUPCWBWJFYXWO1J30H35BULGUVK5'
 version = '20180724'
 food_category = '4d4b7105d754a06374d81259'
 
@@ -30,7 +31,6 @@ def create_directories(city, neighbourhood=None):
     :param city: The city being explored
     :param neighbourhood: Boolean to create a directory for the selected neighbourhood
     :return: True - if directories are created successfully
-
     """
     dest_folder = os.getcwd()
     if neighbourhood is not None:
@@ -57,11 +57,9 @@ def create_directories(city, neighbourhood=None):
 
 def is_restaurant(category_name):
     """
-
     Identify restaurants of the type selected by the user
     :param category_name used to filter out fast foods, bakery type establishments
     :return: True if type of restaurant is the selected type
-
     """
 
     restaurant_words = ['restaurant', 'diner', 'taverna', 'steakhouse']
@@ -85,25 +83,16 @@ def format_address(location):
     return address
 
 
-def get_venues_near_location(lat, lon, category, client_id, client_secret, fs_version, radius, limit):
+def get_venues_near_location(args):
     """
-
-    Get the restaurant information near the locoation of interest
-    :param lat: The latitude of interest
-    :param lon:  The longitude of interest
-    :param category: The Four Square category for Food
-    :param client_id: The Four Square client id
-    :param client_secret: The Four Square client key
-    :param fs_version: The Four Square API version
-    :param radius: The radius of search
-    :param limit: The number of results returned by Four Square API
+    Get the restaurant information near the location of interest
+    :param args: Tuple containing the function arguments
     :return: A list of venues
-
     """
+    lat, lon, category, client_id, client_secret, fs_version, radius, limit = args
 
     url = 'https://api.foursquare.com/v2/venues/explore?client_id={}&client_secret={}&v={}&ll={},{}&categoryId={}&radius={}&limit={}'.format(
         client_id, client_secret, fs_version, lat, lon, category, radius, limit)
-
 
     try:
         results = requests.get(url).json()['response']['groups'][0]['items']
@@ -117,20 +106,20 @@ def get_venues_near_location(lat, lon, category, client_id, client_secret, fs_ve
                    item['venue']['location']['distance']) for item in results]
     except HTTPError as http_err:
         print(f'HTTP error occurred: {http_err}')
+        venues = []
     except Exception as err:
         print(f'Other error occurred: {err}')
         venues = []
+
     return venues
 
 
 def get_restaurants(lats, lons):
     """
-
     Get the list of restaurants for the various neighbourhoods to create a heat map to start with
     :param lats: latitiude of the center of the neighbourhood
     :param lons: longitude of the center of the neighbourhood
     :return: a data frame with the restaurants information
-
     """
 
     venue_ids = []
@@ -146,12 +135,13 @@ def get_restaurants(lats, lons):
     candidate_lat = []
     candidate_lon = []
 
+    # Prepare the arguments for parallel processing
+    args_list = [(lat, lon, food_category, foursquare_client_id, foursquare_client_secret, version, 350, 250) for lat, lon in zip(lats, lons)]
 
-    for lat, lon in zip(lats, lons):
-        # Using radius=300 and a limit of 250
-        venues = get_venues_near_location(lat, lon, food_category, foursquare_client_id,
-                                              foursquare_client_secret, version, radius=350, limit=250)
+    with Pool() as pool:
+        results = pool.map(get_venues_near_location, args_list)
 
+    for lat, lon, venues in zip(lats, lons, results):
         if len(venues) > 0:
             for venue in venues:
                 is_rest = is_restaurant(venue[3])
@@ -170,24 +160,24 @@ def get_restaurants(lats, lons):
                     candidate_lat.append(lat)
                     candidate_lon.append(lon)
         else:
-            print('No venues returned for')
+            print('No venues returned for', lat, lon)
 
-    df_restaurants = pd.DataFrame({'Area Latitude': candidate_lat,
-                                    'Area Longitude': candidate_lon,
-                                    'Venue Id': venue_ids,
-                                    'Venue Name': venue_names,
-                                    'Venue Category Id': venue_category_ids,
-                                    'Venue Category Name': venue_category_names,
-                                    'Venue Address': venue_addresses,
-                                    'Venue Latitude': venue_latitudes,
-                                    'Venue Longitude': venue_longitudes,
-                                    'Venue Distance': venue_distance,
-                                    'Venue X': venue_x,
-                                    'Venue Y': venue_y})
-
+    df_restaurants = pd.DataFrame({
+        'Area Latitude': candidate_lat,
+        'Area Longitude': candidate_lon,
+        'Venue Id': venue_ids,
+        'Venue Name': venue_names,
+        'Venue Category Id': venue_category_ids,
+        'Venue Category Name': venue_category_names,
+        'Venue Address': venue_addresses,
+        'Venue Latitude': venue_latitudes,
+        'Venue Longitude': venue_longitudes,
+        'Venue Distance': venue_distance,
+        'Venue X': venue_x,
+        'Venue Y': venue_y
+    })
 
     return df_restaurants
-
 def boroughs_style(feature):
     return {'color': 'blue', 'fill': False }
 
@@ -216,73 +206,120 @@ def map_rest_popup(row):
 
     return html
 
-def get_latitudes_longitudes(city_center_x, city_center_y, neighbourhood=None):
-    if neighbourhood is not None:
-        #print("Retrieving Neighbourhood lats and lons")
-        k = math.sqrt(3) / 2  # Vertical offset for hexagonal grid cells
-        x_min = city_center_x - 1000
-        x_step = 300
-        y_min = city_center_y - 1000 - (int(21 / k) * k * 300 - 2000) / 2
-        y_step = 300 * k
-        latitudes = []
-        longitudes = []
-        distances_from_center = []
-        xs = []
-        ys = []
-        for i in range(0, int(21 / k)):
-            y = y_min + i * y_step
-            x_offset = 150 if i % 2 == 0 else 0
-            for j in range(0, 21):
-                x = x_min + j * x_step + x_offset
-                distance_from_center = calc_xy_distance(city_center_x, city_center_y, x, y)
-                if distance_from_center <= 1001:
-                    lon, lat = xy_to_lonlat(x, y)
-                    latitudes.append(lat)
-                    longitudes.append(lon)
-                    distances_from_center.append(distance_from_center)
-                    xs.append(x)
-                    ys.append(y)
-    else:
-        #print("Retrieving City lats and lons")
-        k = math.sqrt(3) / 2  # Vertical offset for hexagonal grid cells
-        x_min = city_center_x - 6000
-        x_step = 600
-        y_min = city_center_y - 6000 - (int(21 / k) * k * 600 - 12000) / 2
-        y_step = 600 * k
-        latitudes = []
-        longitudes = []
-        distances_from_center = []
-        xs = []
-        ys = []
-        for i in range(0, int(21 / k)):
-            y = y_min + i * y_step
-            x_offset = 300 if i % 2 == 0 else 0
-            for j in range(0, 21):
-                x = x_min + j * x_step + x_offset
-                distance_from_center = calc_xy_distance(city_center_x, city_center_y, x, y)
-                if distance_from_center <= 6001:
-                    lon, lat = xy_to_lonlat(x, y)
-                    #print("Lat: {}, Lon: {}".format(lat, lon))
-                    latitudes.append(lat)
-                    longitudes.append(lon)
-                    distances_from_center.append(distance_from_center)
-                    xs.append(x)
-                    ys.append(y)
+def process_cell(i, j, x_min, x_step, y_min, y_step, k, neighbourhood, city_center_x, city_center_y):
+    latitudes = []
+    longitudes = []
+    distances_from_center = []
+    xs = []
+    ys = []
 
+    x_offset = 150 if i % 2 == 0 else 0
+
+    x = x_min + j * x_step + x_offset
+    y = y_min + i * y_step
+
+    distance_from_center = calc_xy_distance(city_center_x, city_center_y, x, y)
+
+    if neighbourhood is not None:
+        if distance_from_center <= 1001:
+            lon, lat = xy_to_lonlat(x, y)
+            latitudes.append(lat)
+            longitudes.append(lon)
+            distances_from_center.append(distance_from_center)
+            xs.append(x)
+            ys.append(y)
+    else:
+        if distance_from_center <= 6001:
+            lon, lat = xy_to_lonlat(x, y)
+            latitudes.append(lat)
+            longitudes.append(lon)
+            distances_from_center.append(distance_from_center)
+            xs.append(x)
+            ys.append(y)
+
+    return latitudes, longitudes, distances_from_center, xs, ys
+
+def get_latitudes_longitudes(city_center_x, city_center_y, neighbourhood=None):
+    '''
+    Get the latitudes and longitudes of the center of each cell in the hexagonal grid,
+    and its distance from the center of the city
+    :param city_center_x: latitude of the city center in cartesian coordinates
+    :param city_center_y: longitude of the city center in cartesian coordinates
+    :param neighbourhood: neighbourhood your want ot explore
+    :return: the latiudes, longitudes, distance from the city center and
+    cartesian coordinates of each cell in hexagonal grid
+    '''
+
+
+    k = math.sqrt(3) / 2  # Vertical offset for hexagonal grid cells
+    if neighbourhood is not None:
+        x_min = city_center_x - 1000
+        y_min = city_center_y - 1000 - (int(21 / k) * k * 300 - 2000) / 2
+    else:
+        x_min = city_center_x - 6000
+        y_min = city_center_y - 6000 - (int(21 / k) * k * 600 - 12000) / 2
+
+    x_step = 300 if neighbourhood is not None else 600
+    y_step = 300 * k if neighbourhood is not None else 600 * k
+
+    latitudes = []
+    longitudes = []
+    distances_from_center = []
+    xs = []
+    ys = []
+
+    pool = multiprocessing.Pool()
+
+    results = [
+        pool.apply_async(
+            process_cell,
+            (i, j, x_min, x_step, y_min, y_step, k, neighbourhood, city_center_x, city_center_y)
+        )
+        for i in range(0, int(21 / k))
+        for j in range(0, 21)
+    ]
+
+    pool.close()
+    pool.join()
+
+    for result in results:
+        cell_latitudes, cell_longitudes, cell_distances, cell_xs, cell_ys = result.get()
+        latitudes.extend(cell_latitudes)
+        longitudes.extend(cell_longitudes)
+        distances_from_center.extend(cell_distances)
+        xs.extend(cell_xs)
+        ys.extend(cell_ys)
 
     return latitudes, longitudes, distances_from_center, xs, ys
 
 def lonlat_to_xy(lon, lat):
+    """
+    Get the Cartesian 2D coordinate
+    :param lat: latitiude of the center of the neighbourhood
+    :param lon: longitude of the center of the neighbourhood
+    :return: cartesian coordinates
+    """
     transformer = Transformer.from_crs('epsg:4326','epsg:32618',always_xy=True)
     xy = transformer.transform(lon, lat)
     return xy[0], xy[1]
 
 def xy_to_lonlat(x, y):
+    """
+    Get the lat and logitude given the cartesian coordinates
+    :param x: cartesian coordinate x
+    :param y: cartesian coordinate y
+    :return: latitude and longitudes
+    """
     transformer = Transformer.from_crs('epsg:32618','epsg:4326',always_xy=True)
     lonlat = transformer.transform(x,y)
     return lonlat[0], lonlat[1]
 
 def calc_xy_distance(x1, y1, x2, y2):
+    """
+    Calculate the distance between two Cartesian 2D coordinate
+    :param x1, y1, x2 and y2: cartesian coordinates of the two points
+    :return: distance
+    """
     dx = x2 - x1
     dy = y2 - y1
     return math.sqrt(dx*dx + dy*dy)
