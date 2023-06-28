@@ -13,8 +13,8 @@ import multiprocessing
 from multiprocessing import Pool
 
 # ID and KEY for Four Square API
-foursquare_client_id = 'WLG2AFJIJUUYJXUWRRCBF4MXWNGUXAD3BTRR1VALEFPXM15M'
-foursquare_client_secret = '14ICLYSBIB3RGLNQOQLFOUPCWBWJFYXWO1J30H35BULGUVK5'
+foursquare_client_id = ''
+foursquare_client_secret = ''
 version = '20180724'
 food_category = '4d4b7105d754a06374d81259'
 
